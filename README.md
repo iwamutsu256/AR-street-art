@@ -1,5 +1,6 @@
-<<<<<<< HEAD
-# Street Art Monorepo
+# AR-street-art
+
+Street Art 開発用モノレポです。
 
 ## 起動
 
@@ -27,8 +28,3 @@
 - 壁の seed は `infra/docker/postgres/init/001-init.sql`
 - Drizzle 設定は `apps/api/drizzle.config.ts`
 - 画像処理、R2、本格的な MapLibre 初期化は次段階
-=======
-# AR-street-art
-
-いえい
->>>>>>> origin/dev
