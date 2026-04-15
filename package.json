@@ -1,0 +1,15 @@
+{
+  "name": "street-art-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.11.0",
+  "scripts": {
+    "dev:frontend": "pnpm --filter @street-art/frontend dev",
+    "dev:api": "pnpm --filter @street-art/api dev",
+    "dev": "pnpm -r --parallel --filter @street-art/frontend --filter @street-art/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @street-art/api db:generate",
+    "db:migrate": "pnpm --filter @street-art/api db:migrate",
+    "db:seed": "pnpm --filter @street-art/api db:seed"
+  }
+}
