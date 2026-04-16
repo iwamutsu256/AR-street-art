@@ -9,6 +9,7 @@ services:
       - .env
     environment:
       API_PROXY_TARGET: http://api:3001
+      npm_config_store_dir: /pnpm/store
     volumes:
       - .:/workspace
       - workspace_node_modules:/workspace/node_modules
@@ -28,7 +29,7 @@ services:
       dockerfile: apps/frontend/Dockerfile
       target: dev
     working_dir: /workspace
-    command: sh -lc "pnpm install --no-frozen-lockfile && pnpm --filter @street-art/frontend dev --hostname 0.0.0.0 --port 3000"
+    command: sh -lc "flock /workspace/.pnpm-install.lock pnpm install --no-frozen-lockfile && pnpm --filter @street-art/frontend dev --hostname 0.0.0.0 --port 3000"
     env_file:
       - .env
     environment:
@@ -37,6 +38,7 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
+      npm_config_store_dir: /pnpm/store
     ports:
       - "3000:3000"
     volumes:
@@ -54,12 +56,13 @@ services:
       dockerfile: apps/api/Dockerfile
       target: dev
     working_dir: /workspace
-    command: sh -lc "pnpm install --no-frozen-lockfile && pnpm --filter @street-art/api dev"
+    command: sh -lc "flock /workspace/.pnpm-install.lock pnpm install --no-frozen-lockfile && pnpm --filter @street-art/api dev"
     env_file:
       - .env
     environment:
       NODE_ENV: development
       CHOKIDAR_USEPOLLING: "true"
+      npm_config_store_dir: /pnpm/store
     ports:
       - "3001:3001"
     volumes:
