@@ -7,12 +7,15 @@ services:
     command: sleep infinity
     env_file:
       - .env
+    environment:
+      API_PROXY_TARGET: http://api:3001
     volumes:
       - .:/workspace
       - workspace_node_modules:/workspace/node_modules
       - frontend_node_modules:/workspace/apps/frontend/node_modules
       - api_node_modules:/workspace/apps/api/node_modules
       - pnpm_store:/pnpm/store
+      - codex_config:/root/.codex
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,6 +32,7 @@ services:
     env_file:
       - .env
     environment:
+      API_PROXY_TARGET: http://api:3001
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
       CHOKIDAR_USEPOLLING: "true"
@@ -98,3 +102,4 @@ volumes:
   api_node_modules:
   postgres_data:
   pnpm_store:
+  codex_config:

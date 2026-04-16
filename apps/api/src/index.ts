@@ -1,17 +1,21 @@
+import { randomUUID } from 'node:crypto';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { multipart } from '@hono/multipart';
 import { z } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
-import type { WallSummary } from '@street-art/shared';
 import { env } from './lib/env.js';
 import { db, sql } from './lib/db.js';
 import { redis } from './lib/redis.js';
 import { walls } from './db/schema.js';
-import { eq } from 'drizzle-orm';
 import { uploadToR2AsJpeg } from './lib/s3.js';
 
+type WallSummary = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  photoUrl: string | null;
+};
 
 const app = new Hono();
 
@@ -89,45 +93,52 @@ const createWallSchema = z.object({
   ),
 });
 
-app.post('/walls',multipart(), async (c) => {
+app.post('/walls', async (c) => {
   const body = await c.req.parseBody();
 
   const parsed = createWallSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ errors: parsed.error.errors }, 400);
+    return c.json({ errors: parsed.error.issues }, 400);
   }
-  const { name, latitude, longitude, approxHeading, visibilityRadiusM } = parsed.data;
 
-  const photoFile = body['photoFile'];
+  const { name, latitude, longitude, approxHeading, visibilityRadiusM } = parsed.data;
+  const photoFile = body.photoFile;
+
   if (!photoFile || typeof photoFile === 'string' || !('arrayBuffer' in photoFile)) {
-    return c.json({ message: 'photoFile (image file is required' }, 400);
+    return c.json({ message: 'photoFile (image file) is required' }, 400);
   }
 
   if (!photoFile.type.startsWith('image/')) {
-    return c.json({ message: `Unsupported file type: ${photoFile.type}. Only image files are allowed.` }, 400);
+    return c.json(
+      { message: `Unsupported file type: ${photoFile.type}. Only image files are allowed.` },
+      400
+    );
   }
 
   const photoBuffer = Buffer.from(await photoFile.arrayBuffer());
-  const newWallId = uuidv4();
-  const s3KeyBase = `walls/${newWallId}/${Date.now()}`; // R2に保存するキー
+  const newWallId = randomUUID();
+  const s3KeyBase = `walls/${newWallId}/${Date.now()}`;
 
   let photoUrl: string | undefined;
   try {
     photoUrl = await uploadToR2AsJpeg(s3KeyBase, photoBuffer, photoFile.type);
   } catch (error) {
     console.error('Failed to upload image to R2:', error);
-    return c.json({ message: `Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+    return c.json(
+      { message: `Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      500
+    );
   }
 
   try {
     await db.insert(walls).values({
       id: newWallId,
-      name: name,
-      latitude: latitude,
-      longitude: longitude,
-      photoUrl: photoUrl, // R2から取得したURLを保存
-      approxHeading: approxHeading,
-      visibilityRadiusM: visibilityRadiusM,
+      name,
+      latitude,
+      longitude,
+      photoUrl,
+      approxHeading,
+      visibilityRadiusM,
       createdAt: new Date(),
     });
 

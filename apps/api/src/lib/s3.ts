@@ -20,7 +20,7 @@ export const r2 = new S3Client({
  * @param originalContentType 元のファイルのContent-Type (例: 'image/jpeg', 'image/png')
  * @returns アップロードされたファイルの公開URL (JPEG形式)
  */
-export async function uploadToR2AsJpeg(key: string, body: Buffer | Uint8Array | Blob, originalContentType: string): Promise<string> {
+export async function uploadToR2AsJpeg(key: string, body: Buffer | Uint8Array | Blob, _originalContentType: string): Promise<string> {
   let processedBuffer: Buffer;
   let uploadContentType: string = 'image/jpeg';
 

@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { env } from '../lib/env.js';
 import { db, sql } from '../lib/db.js';
 import { walls } from './schema.js';
 
@@ -28,10 +29,48 @@ const wallSeeds: typeof walls.$inferInsert[] = [
   },
 ];
 
+function formatDatabaseTarget(databaseUrl: string) {
+  const { hostname, port, pathname } = new URL(databaseUrl);
+  const databaseName = pathname.replace(/^\//, '');
+  return `${hostname}${port ? `:${port}` : ''}/${databaseName}`;
+}
+
 async function main() {
+  console.log(`Seeding database: ${formatDatabaseTarget(env.databaseUrl)}`);
   await migrate(db, { migrationsFolder });
 
-  await db.insert(walls).values(wallSeeds).onConflictDoNothing({ target: walls.id });
+  const [{ count: beforeCount }] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count
+    FROM walls
+  `;
+
+  const insertedWalls = await db
+    .insert(walls)
+    .values(wallSeeds)
+    .onConflictDoNothing({ target: walls.id })
+    .returning({ id: walls.id, name: walls.name });
+
+  const [{ count: afterCount }] = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count
+    FROM walls
+  `;
+
+  const skippedCount = wallSeeds.length - insertedWalls.length;
+
+  console.log(`Walls before seed: ${beforeCount}`);
+  console.log(`Inserted walls: ${insertedWalls.length}`);
+
+  if (insertedWalls.length > 0) {
+    console.log(
+      `Inserted IDs: ${insertedWalls.map((wall) => `${wall.id} (${wall.name})`).join(', ')}`
+    );
+  }
+
+  if (skippedCount > 0) {
+    console.log(`Skipped existing walls: ${skippedCount}`);
+  }
+
+  console.log(`Walls after seed: ${afterCount}`);
 
   console.log('Seed completed.');
 }
