@@ -1,4 +1,10 @@
-import { pgTable, text, integer, doublePrecision, timestamp } from 'drizzle-orm/pg-core';
+import { customType, doublePrecision, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+
+const bytea = customType<{ data: Uint8Array }>({
+  dataType() {
+    return 'bytea';
+  },
+});
 
 export const walls = pgTable('walls', {
   id: text('id').primaryKey(),
@@ -13,10 +19,13 @@ export const walls = pgTable('walls', {
 
 export const canvases = pgTable('canvases', {
   id: text('id').primaryKey(),
-  wallId: text('wall_id').notNull(),
+  wallId: text('wall_id')
+    .notNull()
+    .references(() => walls.id, { onDelete: 'cascade' }),
   width: integer('width').notNull(),
   height: integer('height').notNull(),
   paletteVersion: text('palette_version').notNull().default('v1'),
+  pixelData: bytea('pixel_data'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
