@@ -1,4 +1,4 @@
-import { customType, doublePrecision, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { customType, doublePrecision, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 const bytea = customType<{ data: Uint8Array }>({
   dataType() {
@@ -11,7 +11,10 @@ export const walls = pgTable('walls', {
   name: text('name').notNull(),
   latitude: doublePrecision('latitude').notNull(),
   longitude: doublePrecision('longitude').notNull(),
-  photoUrl: text('photo_url'),
+  originalImageUrl: text('original_image_url'),
+  thumbnailImageUrl: text('thumbnail_image_url'),
+  rectifiedImageUrl: text('rectified_image_url'),
+  cornerCoordinates: jsonb('corner_coordinates').$type<{ x:number; y:number }[]>().notNull(),
   approxHeading: integer('approx_heading'),
   visibilityRadiusM: integer('visibility_radius_m').notNull().default(30),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

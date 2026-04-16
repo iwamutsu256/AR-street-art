@@ -1,2 +1,0 @@
-ALTER TABLE "canvases" ADD COLUMN "pixel_data" "bytea";--> statement-breakpoint
-ALTER TABLE "canvases" ADD CONSTRAINT "canvases_wall_id_walls_id_fk" FOREIGN KEY ("wall_id") REFERENCES "public"."walls"("id") ON DELETE cascade ON UPDATE no action;

@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1776321100242,
-      "tag": "0000_shallow_captain_britain",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1776326503103,
-      "tag": "0001_wealthy_ink",
+      "when": 1776346584902,
+      "tag": "0000_busy_shockwave",
       "breakpoints": true
     }
   ]

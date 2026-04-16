@@ -1,5 +1,5 @@
 {
-  "id": "3a48669b-0f68-4c79-ad77-aafd96ae2539",
+  "id": "12439b41-facf-476a-9d67-31f1d98d28d1",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -39,6 +39,12 @@
           "notNull": true,
           "default": "'v1'"
         },
+        "pixel_data": {
+          "name": "pixel_data",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -55,7 +61,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "canvases_wall_id_walls_id_fk": {
+          "name": "canvases_wall_id_walls_id_fk",
+          "tableFrom": "canvases",
+          "tableTo": "walls",
+          "columnsFrom": [
+            "wall_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -90,11 +110,29 @@
           "primaryKey": false,
           "notNull": true
         },
-        "photo_url": {
-          "name": "photo_url",
+        "original_image_url": {
+          "name": "original_image_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "thumbnail_image_url": {
+          "name": "thumbnail_image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rectified_image_url": {
+          "name": "rectified_image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "corner_coordinates": {
+          "name": "corner_coordinates",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
         },
         "approx_heading": {
           "name": "approx_heading",
