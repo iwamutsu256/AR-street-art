@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -16,6 +17,18 @@ type WallSummary = {
   longitude: number;
   photoUrl: string | null;
 };
+
+function buildDefaultCornerCoordinates(width: number, height: number) {
+  const insetX = Math.max(24, Math.round(width * 0.08));
+  const insetY = Math.max(24, Math.round(height * 0.08));
+
+  return [
+    { x: insetX, y: insetY },
+    { x: width - insetX, y: insetY },
+    { x: width - insetX, y: height - insetY },
+    { x: insetX, y: height - insetY },
+  ];
+}
 
 const app = new Hono();
 
@@ -50,7 +63,8 @@ app.get('/health', async (c) => {
 
 app.get('/walls', async (c) => {
   const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude, photo_url AS "photoUrl"
+    SELECT id, name, latitude, longitude,
+      COALESCE(thumbnail_image_url, original_image_url, rectified_image_url) AS "photoUrl"
     FROM walls
     ORDER BY created_at ASC
   `;
@@ -60,7 +74,8 @@ app.get('/walls', async (c) => {
 app.get('/walls/:id', async (c) => {
   const id = c.req.param('id');
   const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude, photo_url AS "photoUrl"
+    SELECT id, name, latitude, longitude,
+      COALESCE(thumbnail_image_url, original_image_url, rectified_image_url) AS "photoUrl"
     FROM walls
     WHERE id = ${id}
     LIMIT 1
@@ -119,6 +134,17 @@ app.post('/walls', async (c) => {
   const newWallId = randomUUID();
   const s3KeyBase = `walls/${newWallId}/${Date.now()}`;
 
+  let cornerCoordinates: { x: number; y: number }[];
+  try {
+    const metadata = await sharp(photoBuffer).metadata();
+    const imageWidth = metadata.width ?? 1200;
+    const imageHeight = metadata.height ?? 1200;
+    cornerCoordinates = buildDefaultCornerCoordinates(imageWidth, imageHeight);
+  } catch (error) {
+    console.error('Failed to inspect uploaded image:', error);
+    return c.json({ message: 'Failed to inspect uploaded image' }, 400);
+  }
+
   let photoUrl: string | undefined;
   try {
     photoUrl = await uploadToR2AsJpeg(s3KeyBase, photoBuffer, photoFile.type);
@@ -136,13 +162,19 @@ app.post('/walls', async (c) => {
       name,
       latitude,
       longitude,
-      photoUrl,
+      originalImageUrl: photoUrl,
+      thumbnailImageUrl: photoUrl,
+      rectifiedImageUrl: photoUrl,
+      cornerCoordinates,
       approxHeading,
       visibilityRadiusM,
       createdAt: new Date(),
     });
 
-    return c.json({ id: newWallId, name, latitude, longitude, photoUrl, message: 'Wall created successfully' }, 201);
+    return c.json(
+      { id: newWallId, name, latitude, longitude, photoUrl, message: 'Wall created successfully' },
+      201
+    );
   } catch (error) {
     console.error('Failed to create wall:', error);
     return c.json({ message: 'Failed to create wall' }, 500);
