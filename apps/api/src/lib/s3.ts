@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { env } from './env.js';
 import sharp from 'sharp';
+import { BlockList } from 'node:net';
 
 // R2のS3互換エンドポイントと認証情報を使ってS3クライアントを初期化
 export const r2 = new S3Client({
@@ -50,4 +51,50 @@ export async function uploadToR2AsJpeg(key: string, body: Buffer | Uint8Array | 
     throw new Error('R2_ACCOUNT_ID is not set in environment variables. Cannot construct public URL.');
   }
   return `https://pub-${env.r2AccountId}.r2.dev/${key}.jpeg`; // URLも.jpeg拡張子付きで返す
+}
+
+/**
+ * 壁に関連する複数の画像をR2にアップロードする関数 (フロントエンドから処理済み画像を受け取る版)
+ * @param wallId 壁のID
+ * @param originalImageFile オリジナル画像ファイル (MultipartFile)
+ * @param thumbnailImageFile サムネイル画像ファイル (MultipartFile)
+ * @param rectifiedImageFile 射影変換済み画像ファイル (MultipartFile)
+ * @returns アップロードされた各画像のURLを含むオブジェクト
+ */
+export async function uploadWallImagesToR2(
+  wallId: string,
+  originalImageFile: File | Blob,
+  thumbnailImageFile: File | Blob,
+  rectifiedImageFile: File | Blob,
+): Promise<{
+  originalImageUrl: string;
+  thumbnailImageUrl: string;
+  rectifiedImageUrl: string;
+}> {
+  if (!env.r2AccountId) {
+    throw new Error('R2_ACCOUNT_ID is not set in environment variables. Cannot construct public URL.');
+  }
+
+  const originalImageBuffer = Buffer.from(await originalImageFile.arrayBuffer());
+  const thumbnailImageBuffer = Buffer.from(await thumbnailImageFile.arrayBuffer());
+  const rectifiedImageBuffer = Buffer.from(await rectifiedImageFile.arrayBuffer());
+
+  const originalImageContentType = originalImageFile.type;
+  const thumbnailImageContentType = thumbnailImageFile.type;
+  const rectifiedImageContentType = rectifiedImageFile.type;
+
+  const originalKey = `walls/${wallId}/original`;
+  const originalImageUrl = await uploadToR2AsJpeg(originalKey, originalImageBuffer, originalImageContentType);
+
+  const thumbnailKey = `walls/${wallId}/thumbnail`;
+  const thumbnailImageUrl = await uploadToR2AsJpeg(thumbnailKey, thumbnailImageBuffer, thumbnailImageContentType);
+
+  const rectifiedKey = `walls/${wallId}/wall-rectified`;
+  const rectifiedImageUrl = await uploadToR2AsJpeg(rectifiedKey, rectifiedImageBuffer, rectifiedImageContentType);
+
+  return {
+    originalImageUrl,
+    thumbnailImageUrl,
+    rectifiedImageUrl,
+  }
 }

@@ -8,14 +8,14 @@ import { env } from './lib/env.js';
 import { db, sql } from './lib/db.js';
 import { redis } from './lib/redis.js';
 import { walls } from './db/schema.js';
-import { uploadToR2AsJpeg } from './lib/s3.js';
+import { uploadWallImagesToR2 } from './lib/s3.js';
 
 type WallSummary = {
   id: string;
   name: string;
   latitude: number;
   longitude: number;
-  photoUrl: string | null;
+  thumbnailImageUrl: string | null;
 };
 
 function buildDefaultCornerCoordinates(width: number, height: number) {
@@ -63,8 +63,7 @@ app.get('/health', async (c) => {
 
 app.get('/walls', async (c) => {
   const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude,
-      COALESCE(thumbnail_image_url, original_image_url, rectified_image_url) AS "photoUrl"
+    SELECT id, name, latitude, longitude, thumbnail_image_url AS "thumbnailImageUrl"
     FROM walls
     ORDER BY created_at ASC
   `;
@@ -74,8 +73,7 @@ app.get('/walls', async (c) => {
 app.get('/walls/:id', async (c) => {
   const id = c.req.param('id');
   const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude,
-      COALESCE(thumbnail_image_url, original_image_url, rectified_image_url) AS "photoUrl"
+    SELECT id, name, latitude, longitude, thumbnail_image_url AS "thumbnailImageUrl"
     FROM walls
     WHERE id = ${id}
     LIMIT 1
@@ -106,73 +104,116 @@ const createWallSchema = z.object({
     (val) => (val ? Number(val) : undefined),
     z.number().int().positive('visibilityRadiusM must be a positive integer').optional().default(30)
   ),
+  cornerCoordinates: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        try {
+          return JSON.parse(val);
+        } catch (e) {
+          return val;
+        }
+      }
+      return val;
+    },
+    z.array(
+      z.object({
+        x: z.preprocess((val) => Number(val), z.number()),
+        y: z.preprocess((val) => Number(val), z.number()),
+      })
+    ).length(4, 'cornerCoordinates must be an array of 4 points')
+  ),
 });
 
 app.post('/walls', async (c) => {
   const body = await c.req.parseBody();
-
-  const parsed = createWallSchema.safeParse(body);
+  
+  const cornerCoordinatesString = body['cornerCoordinates'];
+  
+  const parsed = createWallSchema.safeParse({
+    ...body,
+    cornerCoordinates: cornerCoordinatesString,
+  });
   if (!parsed.success) {
     return c.json({ errors: parsed.error.issues }, 400);
   }
 
-  const { name, latitude, longitude, approxHeading, visibilityRadiusM } = parsed.data;
-  const photoFile = body.photoFile;
+  const { name, latitude, longitude, approxHeading, visibilityRadiusM, cornerCoordinates } = parsed.data;
+  
+  const originalImageFile = body['originalImageFile'];
+  const thumbnailImageFile = body['thumbnailImageFile'];
+  const rectifiedImageFile = body['rectifiedImageFile'];
 
-  if (!photoFile || typeof photoFile === 'string' || !('arrayBuffer' in photoFile)) {
-    return c.json({ message: 'photoFile (image file) is required' }, 400);
+  const validateImageFile = (file: unknown, fieldName: string) => {
+    const isFile = (input: unknown): input is File => {
+      return typeof input === 'object' && input !== null && 'arrayBuffer' in input && 'type' in input;
+    };
+
+    if (!isFile(file)) {
+      return `${fieldName} (image file) is required`;
+    }
+    if (!file.type.startsWith('image/')) {
+      return `Unsupported file type for ${fieldName}: ${file.type}. Only image files are allowed.`;
+    }
+    return null;
   }
 
-  if (!photoFile.type.startsWith('image/')) {
-    return c.json(
-      { message: `Unsupported file type: ${photoFile.type}. Only image files are allowed.` },
-      400
-    );
-  }
+  let validationError = validateImageFile(originalImageFile, 'originalImageFile');
+  if (validationError) return c.json({ message: validationError }, 400);
 
-  const photoBuffer = Buffer.from(await photoFile.arrayBuffer());
+  validationError = validateImageFile(thumbnailImageFile, 'thumbnailImageFile');
+  if (validationError) return c.json({ message: validationError }, 400);
+
+  validationError = validateImageFile(rectifiedImageFile, 'rectifiedImageFile');
+  if (validationError) return c.json({ message: validationError }, 400);
+
   const newWallId = randomUUID();
-  const s3KeyBase = `walls/${newWallId}/${Date.now()}`;
 
-  let cornerCoordinates: { x: number; y: number }[];
-  try {
-    const metadata = await sharp(photoBuffer).metadata();
-    const imageWidth = metadata.width ?? 1200;
-    const imageHeight = metadata.height ?? 1200;
-    cornerCoordinates = buildDefaultCornerCoordinates(imageWidth, imageHeight);
-  } catch (error) {
-    console.error('Failed to inspect uploaded image:', error);
-    return c.json({ message: 'Failed to inspect uploaded image' }, 400);
-  }
+  let originalImageUrl: string | undefined;
+  let thumbnailImageUrl: string | undefined;
+  let rectifiedImageUrl: string | undefined;
 
-  let photoUrl: string | undefined;
   try {
-    photoUrl = await uploadToR2AsJpeg(s3KeyBase, photoBuffer, photoFile.type);
-  } catch (error) {
-    console.error('Failed to upload image to R2:', error);
-    return c.json(
-      { message: `Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}` },
-      500
+    // 3つのファイルとwallIdを渡してアップロード
+    const uploadedUrls = await uploadWallImagesToR2(
+      newWallId,
+      originalImageFile as File, // 型アサーション
+      thumbnailImageFile as File,
+      rectifiedImageFile as File
     );
+    originalImageUrl = uploadedUrls.originalImageUrl;
+    thumbnailImageUrl = uploadedUrls.thumbnailImageUrl;
+    rectifiedImageUrl = uploadedUrls.rectifiedImageUrl;
+  } catch (error) {
+    console.error('Failed to upload images to R2:', error);
+    return c.json({ message: `Failed to upload images: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 
   try {
     await db.insert(walls).values({
       id: newWallId,
-      name,
-      latitude,
-      longitude,
-      originalImageUrl: photoUrl,
-      thumbnailImageUrl: photoUrl,
-      rectifiedImageUrl: photoUrl,
-      cornerCoordinates,
-      approxHeading,
-      visibilityRadiusM,
-      createdAt: new Date(),
+      name: name,
+      latitude: latitude,
+      longitude: longitude,
+      originalImageUrl: originalImageUrl,
+      thumbnailImageUrl: thumbnailImageUrl,
+      rectifiedImageUrl: rectifiedImageUrl,
+      cornerCoordinates: cornerCoordinates,
+      approxHeading: approxHeading,
+      visibilityRadiusM: visibilityRadiusM,
     });
 
     return c.json(
-      { id: newWallId, name, latitude, longitude, photoUrl, message: 'Wall created successfully' },
+      {
+        id: newWallId,
+        name,
+        latitude,
+        longitude,
+        originalImageUrl,
+        thumbnailImageUrl,
+        rectifiedImageUrl,
+        cornerCoordinates,
+        message: 'Wall created successfully',
+      },
       201
     );
   } catch (error) {
