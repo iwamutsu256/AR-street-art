@@ -46,10 +46,10 @@ export async function uploadToR2AsJpeg(key: string, body: Buffer | Uint8Array | 
 
   await r2.send(command);
 
-  if (!env.r2AccountId) {
-    throw new Error('R2_ACCOUNT_ID is not set in environment variables. Cannot construct public URL.');
+  if (!env.r2ImageUrl) {
+    throw new Error('R2_IMAGE_URL is not set in environment variables. This is required to construct the public URL for R2 images.');
   }
-  return `https://pub-${env.r2AccountId}.r2.dev/${key}.jpeg`; // URLも.jpeg拡張子付きで返す
+  return `https://pub-${env.r2ImageUrl}.r2.dev/${key}.jpeg`;
 }
 
 /**

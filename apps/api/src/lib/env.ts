@@ -14,4 +14,5 @@ export const env = {
   r2AccountId: r2AccountId,
   r2BucketName: process.env.R2_BUCKET ?? '',
   r2Endpoint: process.env.R2_ENDPOINT ?? r2Endpoint,
+  r2ImageUrl: process.env.R2_IMAGE_URL ?? '',
 };
