@@ -1,29 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import sharp from 'sharp';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
 import { asc, eq } from 'drizzle-orm';
+import { CANVAS_MAX_SIZE } from '@street-art/shared';
 import { env } from './lib/env.js';
 import { db, sql } from './lib/db.js';
 import { redis } from './lib/redis.js';
-import { walls } from './db/schema.js';
+import { canvases, walls } from './db/schema.js';
 import { uploadWallImagesToR2 } from './lib/s3.js';
 
 const app = new Hono();
-
-function buildDefaultCornerCoordinates(width: number, height: number) {
-  const insetX = Math.max(24, Math.round(width * 0.08));
-  const insetY = Math.max(24, Math.round(height * 0.08));
-
-  return [
-    { x: insetX, y: insetY },
-    { x: width - insetX, y: insetY },
-    { x: width - insetX, y: height - insetY },
-    { x: insetX, y: height - insetY },
-  ];
-}
 
 app.use('*', cors({ origin: env.appOrigin, credentials: true }));
 
@@ -80,9 +68,22 @@ app.get('/walls/:id', async (c) => {
     return c.json({ message: 'Wall not found' }, 404);
   }
 
+  const [canvas] = await db
+    .select({
+      id: canvases.id,
+      width: canvases.width,
+      height: canvases.height,
+      paletteVersion: canvases.paletteVersion,
+    })
+    .from(canvases)
+    .where(eq(canvases.wallId, id))
+    .orderBy(asc(canvases.createdAt))
+    .limit(1);
+
   return c.json({
-    ...row, // すべてのフィールドを含める
-    photoUrl: row.thumbnailImageUrl, // フロントエンドのWallSummaryとの互換性のためphotoUrlも追加
+    ...row,
+    photoUrl: row.thumbnailImageUrl,
+    canvas: canvas ?? null,
   });
 });
 
@@ -121,6 +122,14 @@ const createWallSchema = z.object({
         y: z.preprocess((val) => Number(val), z.number()),
       })
     ).length(4, 'cornerCoordinates must be an array of 4 points')
+  ),
+  canvasWidth: z.preprocess(
+    (val) => Number(val),
+    z.number().int().positive().max(CANVAS_MAX_SIZE, `canvasWidth must be <= ${CANVAS_MAX_SIZE}`)
+  ),
+  canvasHeight: z.preprocess(
+    (val) => Number(val),
+    z.number().int().positive().max(CANVAS_MAX_SIZE, `canvasHeight must be <= ${CANVAS_MAX_SIZE}`)
   ),
 });
 
@@ -163,7 +172,16 @@ app.post('/walls', async (c) => {
   }
 
   // ここまで来れば、すべてのデータは有効
-  const { name, latitude, longitude, approxHeading, visibilityRadiusM, cornerCoordinates } = parsed.data!;
+  const {
+    name,
+    latitude,
+    longitude,
+    approxHeading,
+    visibilityRadiusM,
+    cornerCoordinates,
+    canvasWidth,
+    canvasHeight,
+  } = parsed.data!;
   const originalImageFile = body['originalImageFile'] as File;
   const thumbnailImageFile = body['thumbnailImageFile'] as File;
   const rectifiedImageFile = body['rectifiedImageFile'] as File;
@@ -179,22 +197,46 @@ app.post('/walls', async (c) => {
       rectifiedImageFile
     );
     
-    const [newWall] = await db.insert(walls).values({
-      id: newWallId,
-      name,
-      latitude,
-      longitude,
-      originalImageUrl: uploadedUrls.originalImageUrl,
-      thumbnailImageUrl: uploadedUrls.thumbnailImageUrl,
-      rectifiedImageUrl: uploadedUrls.rectifiedImageUrl,
-      cornerCoordinates,
-      approxHeading,
-      visibilityRadiusM,
-    }).returning();
-    
+    const created = await db.transaction(async (tx) => {
+      const [newWall] = await tx
+        .insert(walls)
+        .values({
+          id: newWallId,
+          name,
+          latitude,
+          longitude,
+          originalImageUrl: uploadedUrls.originalImageUrl,
+          thumbnailImageUrl: uploadedUrls.thumbnailImageUrl,
+          rectifiedImageUrl: uploadedUrls.rectifiedImageUrl,
+          cornerCoordinates,
+          approxHeading,
+          visibilityRadiusM,
+        })
+        .returning();
+
+      const [newCanvas] = await tx
+        .insert(canvases)
+        .values({
+          id: randomUUID(),
+          wallId: newWallId,
+          width: canvasWidth,
+          height: canvasHeight,
+        })
+        .returning({
+          id: canvases.id,
+          width: canvases.width,
+          height: canvases.height,
+          paletteVersion: canvases.paletteVersion,
+        });
+
+      return { newWall, newCanvas };
+    });
+
     return c.json(
       {
-        ...newWall,
+        ...created.newWall,
+        photoUrl: created.newWall.thumbnailImageUrl,
+        canvas: created.newCanvas,
         message: 'Wall created successfully',
       },
       201

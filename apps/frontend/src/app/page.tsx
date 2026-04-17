@@ -1,87 +1,98 @@
+import Link from 'next/link';
 import { MapPlaceholder } from '../components/MapPlaceholder';
-import type { WallSummary } from '@street-art/shared';
-
-function getApiUrl(path: string) {
-  const normalizedPath = `/${path.replace(/^\//, '')}`;
-  const internalApiOrigin = process.env.API_PROXY_TARGET?.replace(/\/$/, '');
-
-  if (internalApiOrigin) {
-    return new URL(normalizedPath, `${internalApiOrigin}/`).toString();
-  }
-
-  const appOrigin = process.env.APP_ORIGIN ?? 'http://localhost:3000';
-  const apiBasePath = (process.env.NEXT_PUBLIC_API_BASE ?? '/api').replace(/\/$/, '');
-  return new URL(`${apiBasePath}${normalizedPath}`, appOrigin).toString();
-}
-
-async function getHealth() {
-  try {
-    const res = await fetch(getApiUrl('/health'), { cache: 'no-store' });
-
-    if (!res.ok) {
-      return { ok: false, db: false, redis: false };
-    }
-
-    return res.json() as Promise<{ ok: boolean; db: boolean; redis: boolean }>;
-  } catch {
-    return { ok: false, db: false, redis: false };
-  }
-}
-
-async function getWalls() {
-  try {
-    const res = await fetch(getApiUrl('/walls'), { cache: 'no-store' });
-
-    if (!res.ok) {
-      return [];
-    }
-
-    return (await res.json()) as WallSummary[];
-  } catch {
-    return [];
-  }
-}
+import { getHealth, getWalls } from '../lib/api';
 
 export default async function Home() {
   const [health, walls] = await Promise.all([getHealth(), getWalls()]);
 
   return (
-    <main style={{ padding: 24, fontFamily: 'sans-serif', maxWidth: 960, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 32, marginBottom: 8 }}>Street Art App</h1>
-      <p style={{ color: '#4b5563', marginBottom: 24 }}>
-        Docker / Next.js / Hono / PostGIS / Redis の最小起動確認ページです。
-      </p>
-
-      <section style={{ marginBottom: 24, padding: 16, border: '1px solid #e5e7eb', borderRadius: 16 }}>
-        <h2 style={{ fontSize: 20, marginBottom: 12 }}>Health</h2>
-        <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(health, null, 2)}</pre>
+    <main className="page-shell">
+      <section className="hero">
+        <div className="page-kicker">Street Art App</div>
+        <h1>街の壁を登録して、オンラインキャンバスの入口をつくる。</h1>
+        <p>
+          壁画像のアップロード、四隅指定、キャンバスサイズ決定、位置情報設定までをフロントで完結させ、
+          API へまとめて送る最小の登録フローを追加しました。
+        </p>
+        <div className="hero-actions">
+          <Link className="button button-primary" href="/walls/new">
+            新規壁登録へ
+          </Link>
+          <a className="button button-secondary" href="/api/walls">
+            API を確認
+          </a>
+        </div>
       </section>
 
-      <section style={{ marginBottom: 24 }}>
+      <section className="section-card">
+        <div className="section-topline">
+          <div className="stack-sm">
+            <div className="step-badge">System</div>
+            <h2 className="section-title">Health</h2>
+          </div>
+        </div>
+        <div className="status-grid">
+          <div className="metric-pill">
+            <strong>API</strong>
+            <span>{health.ok ? 'OK' : 'NG'}</span>
+          </div>
+          <div className="metric-pill">
+            <strong>DB</strong>
+            <span>{health.db ? 'Connected' : 'Unavailable'}</span>
+          </div>
+          <div className="metric-pill">
+            <strong>Redis</strong>
+            <span>{health.redis ? 'Connected' : 'Unavailable'}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="section-card">
+        <div className="section-topline">
+          <div className="stack-sm">
+            <div className="step-badge">Map</div>
+            <h2 className="section-title">Wall Map</h2>
+            <p className="section-copy">一覧画面の地図表示は次段階です。登録画面では MapLibre で位置選択できます。</p>
+          </div>
+        </div>
         <MapPlaceholder />
       </section>
 
-      <section style={{ padding: 16, border: '1px solid #e5e7eb', borderRadius: 16 }}>
-        <h2 style={{ fontSize: 20, marginBottom: 12 }}>Walls from API</h2>
+      <section className="section-card">
+        <div className="section-topline">
+          <div className="stack-sm">
+            <div className="step-badge">Walls</div>
+            <h2 className="section-title">Walls from API</h2>
+          </div>
+          <Link className="button button-secondary" href="/walls/new">
+            壁を追加する
+          </Link>
+        </div>
         {walls.length === 0 ? (
-          <p>壁データを取得できませんでした。</p>
+          <div className="empty-state">壁データを取得できませんでした。</div>
         ) : (
-          <ul style={{ display: 'grid', gap: 16, listStyle: 'none', padding: 0, margin: 0 }}>
+          <ul
+            className="wall-grid"
+            style={{ listStyle: 'none', padding: 0, margin: 0 }}
+          >
             {walls.map((wall) => (
-              <li key={wall.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>{wall.name}</div>
-                <div style={{ color: '#4b5563', marginBottom: 4 }}>ID: {wall.id}</div>
-                <div style={{ color: '#4b5563', marginBottom: 8 }}>
-                  緯度経度: {wall.latitude}, {wall.longitude}
-                </div>
+              <li className="wall-card" key={wall.id}>
+                <div className="wall-card__image">
                 {wall.photoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={wall.photoUrl}
                     alt={wall.name}
-                    style={{ width: '100%', maxWidth: 420, borderRadius: 12, display: 'block' }}
                   />
-                ) : null}
+                  ) : null}
+                </div>
+                <div className="wall-card__body">
+                  <div style={{ fontWeight: 700, fontSize: '1.12rem' }}>{wall.name}</div>
+                  <div className="mono">ID: {wall.id}</div>
+                  <div className="muted-copy">
+                    緯度経度: {wall.latitude}, {wall.longitude}
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
