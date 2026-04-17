@@ -126,99 +126,82 @@ const createWallSchema = z.object({
 
 app.post('/walls', async (c) => {
   const body = await c.req.parseBody();
-  
-  const cornerCoordinatesString = body['cornerCoordinates'];
-  
-  const parsed = createWallSchema.safeParse({
-    ...body,
-    cornerCoordinates: cornerCoordinatesString,
-  });
+  const allErrors: z.ZodIssue[] = [];
+
+  // 1. Zodスキーマでテキストフィールドと座標を検証
+  const parsed = createWallSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ errors: parsed.error.issues }, 400);
+    allErrors.push(...parsed.error.issues);
   }
 
-  const { name, latitude, longitude, approxHeading, visibilityRadiusM, cornerCoordinates } = parsed.data;
-  
-  const originalImageFile = body['originalImageFile'];
-  const thumbnailImageFile = body['thumbnailImageFile'];
-  const rectifiedImageFile = body['rectifiedImageFile'];
-
-  const validateImageFile = (file: unknown, fieldName: string) => {
+  // 2. 画像ファイルを個別に検証し、エラーを収集
+  const imageFields = ['originalImageFile', 'thumbnailImageFile', 'rectifiedImageFile'];
+  for (const fieldName of imageFields) {
+    const file = body[fieldName];
     const isFile = (input: unknown): input is File => {
       return typeof input === 'object' && input !== null && 'arrayBuffer' in input && 'type' in input;
     };
 
-    if (!isFile(file)) {
-      return `${fieldName} (image file) is required`;
+    if (!isFile(file) || file.size === 0) {
+      allErrors.push({
+        code: z.ZodIssueCode.custom,
+        path: [fieldName],
+        message: `A non-empty image file is required for ${fieldName}.`,
+      });
+    } else if (!file.type.startsWith('image/')) {
+      allErrors.push({
+        code: z.ZodIssueCode.custom,
+        path: [fieldName],
+        message: `Unsupported file type for ${fieldName}: ${file.type}.`,
+      });
     }
-    if (!file.type.startsWith('image/')) {
-      return `Unsupported file type for ${fieldName}: ${file.type}. Only image files are allowed.`;
-    }
-    return null;
   }
 
-  let validationError = validateImageFile(originalImageFile, 'originalImageFile');
-  if (validationError) return c.json({ message: validationError }, 400);
+  // 3. エラーが一つでもあれば、すべてまとめて返す
+  if (allErrors.length > 0) {
+    return c.json({ errors: allErrors }, 400);
+  }
 
-  validationError = validateImageFile(thumbnailImageFile, 'thumbnailImageFile');
-  if (validationError) return c.json({ message: validationError }, 400);
-
-  validationError = validateImageFile(rectifiedImageFile, 'rectifiedImageFile');
-  if (validationError) return c.json({ message: validationError }, 400);
-
-  const newWallId = randomUUID();
-
-  let originalImageUrl: string | undefined;
-  let thumbnailImageUrl: string | undefined;
-  let rectifiedImageUrl: string | undefined;
+  // ここまで来れば、すべてのデータは有効
+  const { name, latitude, longitude, approxHeading, visibilityRadiusM, cornerCoordinates } = parsed.data!;
+  const originalImageFile = body['originalImageFile'] as File;
+  const thumbnailImageFile = body['thumbnailImageFile'] as File;
+  const rectifiedImageFile = body['rectifiedImageFile'] as File;
 
   try {
+    const newWallId = randomUUID();
+
     // 3つのファイルとwallIdを渡してアップロード
     const uploadedUrls = await uploadWallImagesToR2(
       newWallId,
-      originalImageFile as File, // 型アサーション
-      thumbnailImageFile as File,
-      rectifiedImageFile as File
+      originalImageFile,
+      thumbnailImageFile,
+      rectifiedImageFile
     );
-    originalImageUrl = uploadedUrls.originalImageUrl;
-    thumbnailImageUrl = uploadedUrls.thumbnailImageUrl;
-    rectifiedImageUrl = uploadedUrls.rectifiedImageUrl;
-  } catch (error) {
-    console.error('Failed to upload images to R2:', error);
-    return c.json({ message: `Failed to upload images: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-
-  try {
-    await db.insert(walls).values({
+    
+    const [newWall] = await db.insert(walls).values({
       id: newWallId,
-      name: name,
-      latitude: latitude,
-      longitude: longitude,
-      originalImageUrl: originalImageUrl,
-      thumbnailImageUrl: thumbnailImageUrl,
-      rectifiedImageUrl: rectifiedImageUrl,
-      cornerCoordinates: cornerCoordinates,
-      approxHeading: approxHeading,
-      visibilityRadiusM: visibilityRadiusM,
-    });
+      name,
+      latitude,
+      longitude,
+      originalImageUrl: uploadedUrls.originalImageUrl,
+      thumbnailImageUrl: uploadedUrls.thumbnailImageUrl,
+      rectifiedImageUrl: uploadedUrls.rectifiedImageUrl,
+      cornerCoordinates,
+      approxHeading,
+      visibilityRadiusM,
+    }).returning();
     
     return c.json(
       {
-        id: newWallId,
-        name,
-        latitude,
-        longitude,
-        originalImageUrl,
-        thumbnailImageUrl,
-        rectifiedImageUrl,
-        cornerCoordinates,
+        ...newWall,
         message: 'Wall created successfully',
       },
       201
     );
   } catch (error) {
-    console.error('Failed to create wall:', error);
-    return c.json({ message: 'Failed to create wall' }, 500);
+    console.error('Failed to create wall or upload images:', error);
+    return c.json({ message: `Failed to create wall: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
