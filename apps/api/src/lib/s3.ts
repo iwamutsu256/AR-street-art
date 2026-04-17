@@ -1,7 +1,6 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { env } from './env.js';
 import sharp from 'sharp';
-import { BlockList } from 'node:net';
 
 // R2のS3互換エンドポイントと認証情報を使ってS3クライアントを初期化
 export const r2 = new S3Client({
@@ -71,10 +70,6 @@ export async function uploadWallImagesToR2(
   thumbnailImageUrl: string;
   rectifiedImageUrl: string;
 }> {
-  if (!env.r2AccountId) {
-    throw new Error('R2_ACCOUNT_ID is not set in environment variables. Cannot construct public URL.');
-  }
-
   const originalImageBuffer = Buffer.from(await originalImageFile.arrayBuffer());
   const thumbnailImageBuffer = Buffer.from(await thumbnailImageFile.arrayBuffer());
   const rectifiedImageBuffer = Buffer.from(await rectifiedImageFile.arrayBuffer());
@@ -96,5 +91,5 @@ export async function uploadWallImagesToR2(
     originalImageUrl,
     thumbnailImageUrl,
     rectifiedImageUrl,
-  }
+  };
 }

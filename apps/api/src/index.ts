@@ -4,19 +4,14 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
+import { asc, eq } from 'drizzle-orm';
 import { env } from './lib/env.js';
 import { db, sql } from './lib/db.js';
 import { redis } from './lib/redis.js';
 import { walls } from './db/schema.js';
 import { uploadWallImagesToR2 } from './lib/s3.js';
 
-type WallSummary = {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  thumbnailImageUrl: string | null;
-};
+const app = new Hono();
 
 function buildDefaultCornerCoordinates(width: number, height: number) {
   const insetX = Math.max(24, Math.round(width * 0.08));
@@ -29,8 +24,6 @@ function buildDefaultCornerCoordinates(width: number, height: number) {
     { x: insetX, y: height - insetY },
   ];
 }
-
-const app = new Hono();
 
 app.use('*', cors({ origin: env.appOrigin, credentials: true }));
 
@@ -62,28 +55,35 @@ app.get('/health', async (c) => {
 });
 
 app.get('/walls', async (c) => {
-  const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude, thumbnail_image_url AS "thumbnailImageUrl"
-    FROM walls
-    ORDER BY created_at ASC
-  `;
+  const rows = await db
+    .select({
+      id: walls.id,
+      name: walls.name,
+      latitude: walls.latitude,
+      longitude: walls.longitude,
+      photoUrl: walls.thumbnailImageUrl,
+    })
+    .from(walls)
+    .orderBy(asc(walls.createdAt));
   return c.json(rows);
 });
 
 app.get('/walls/:id', async (c) => {
   const id = c.req.param('id');
-  const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude, thumbnail_image_url AS "thumbnailImageUrl"
-    FROM walls
-    WHERE id = ${id}
-    LIMIT 1
-  `;
+  const [row] = await db
+    .select()
+    .from(walls)
+    .where(eq(walls.id, id))
+    .limit(1);
 
-  if (rows.length === 0) {
+  if (!row) {
     return c.json({ message: 'Wall not found' }, 404);
   }
 
-  return c.json(rows[0]);
+  return c.json({
+    ...row, // すべてのフィールドを含める
+    photoUrl: row.thumbnailImageUrl, // フロントエンドのWallSummaryとの互換性のためphotoUrlも追加
+  });
 });
 
 const createWallSchema = z.object({
@@ -201,7 +201,7 @@ app.post('/walls', async (c) => {
       approxHeading: approxHeading,
       visibilityRadiusM: visibilityRadiusM,
     });
-
+    
     return c.json(
       {
         id: newWallId,

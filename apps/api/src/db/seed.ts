@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { count } from "drizzle-orm";
 import { env } from "../lib/env.js";
 import { db, sql } from "../lib/db.js";
 import { canvases, walls } from "./schema.js";
@@ -112,15 +113,11 @@ async function main() {
   console.log(`Seeding database: ${formatDatabaseTarget(env.databaseUrl)}`);
   await migrate(db, { migrationsFolder });
 
-  const [{ count: wallsBeforeCount }] = await sql<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count
-    FROM walls
-  `;
+  const [wallsBeforeResult] = await db.select({ count: count() }).from(walls);
+  const wallsBeforeCount = Number(wallsBeforeResult.count);
 
-  const [{ count: canvasesBeforeCount }] = await sql<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count
-    FROM canvases
-  `;
+  const [canvasesBeforeResult] = await db.select({ count: count() }).from(canvases);
+  const canvasesBeforeCount = Number(canvasesBeforeResult.count);
 
   const insertedWalls = await db
     .insert(walls)
@@ -134,15 +131,11 @@ async function main() {
     .onConflictDoNothing({ target: canvases.id })
     .returning({ id: canvases.id, wallId: canvases.wallId });
 
-  const [{ count: wallsAfterCount }] = await sql<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count
-    FROM walls
-  `;
+  const [wallsAfterResult] = await db.select({ count: count() }).from(walls);
+  const wallsAfterCount = Number(wallsAfterResult.count);
 
-  const [{ count: canvasesAfterCount }] = await sql<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count
-    FROM canvases
-  `;
+  const [canvasesAfterResult] = await db.select({ count: count() }).from(canvases);
+  const canvasesAfterCount = Number(canvasesAfterResult.count);
 
   const skippedWallCount = wallSeeds.length - insertedWalls.length;
   const skippedCanvasCount = canvasSeeds.length - insertedCanvases.length;
