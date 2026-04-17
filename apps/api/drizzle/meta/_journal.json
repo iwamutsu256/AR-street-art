@@ -8,6 +8,13 @@
       "when": 1776346584902,
       "tag": "0000_busy_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776421314912,
+      "tag": "0001_wakeful_micromax",
+      "breakpoints": true
     }
   ]
 }

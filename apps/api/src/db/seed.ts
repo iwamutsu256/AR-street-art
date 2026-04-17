@@ -1,9 +1,15 @@
 import { fileURLToPath } from "node:url";
+import { Buffer } from "node:buffer";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { count } from "drizzle-orm";
+import {
+  DEFAULT_PALETTE_COLORS,
+  DEFAULT_PALETTE_NAME,
+  DEFAULT_PALETTE_VERSION,
+} from "@street-art/shared";
 import { env } from "../lib/env.js";
 import { db, sql } from "../lib/db.js";
-import { canvases, walls } from "./schema.js";
+import { canvases, palettes, walls } from "./schema.js";
 
 const migrationsFolder = fileURLToPath(
   new URL("../../drizzle", import.meta.url),
@@ -88,18 +94,34 @@ const wallSeeds = [
   },
 ] satisfies (typeof walls.$inferInsert)[];
 
+const paletteSeeds = [
+  {
+    version: DEFAULT_PALETTE_VERSION,
+    name: DEFAULT_PALETTE_NAME,
+    colors: DEFAULT_PALETTE_COLORS,
+  },
+] satisfies (typeof palettes.$inferInsert)[];
+
+function createBlankPixelData(width: number, height: number) {
+  return Buffer.alloc(width * height, 0);
+}
+
 const canvasSeeds = [
   {
     id: "demo-canvas-1",
     wallId: "demo-wall-1",
     width: 192,
     height: 128,
+    paletteVersion: DEFAULT_PALETTE_VERSION,
+    pixelData: createBlankPixelData(192, 128),
   },
   {
     id: "demo-canvas-2",
     wallId: "demo-wall-2",
     width: 160,
     height: 160,
+    paletteVersion: DEFAULT_PALETTE_VERSION,
+    pixelData: createBlankPixelData(160, 160),
   },
 ] satisfies (typeof canvases.$inferInsert)[];
 
@@ -116,8 +138,17 @@ async function main() {
   const [wallsBeforeResult] = await db.select({ count: count() }).from(walls);
   const wallsBeforeCount = Number(wallsBeforeResult.count);
 
+  const [palettesBeforeResult] = await db.select({ count: count() }).from(palettes);
+  const palettesBeforeCount = Number(palettesBeforeResult.count);
+
   const [canvasesBeforeResult] = await db.select({ count: count() }).from(canvases);
   const canvasesBeforeCount = Number(canvasesBeforeResult.count);
+
+  const insertedPalettes = await db
+    .insert(palettes)
+    .values(paletteSeeds)
+    .onConflictDoNothing({ target: palettes.version })
+    .returning({ version: palettes.version, name: palettes.name });
 
   const insertedWalls = await db
     .insert(walls)
@@ -134,12 +165,32 @@ async function main() {
   const [wallsAfterResult] = await db.select({ count: count() }).from(walls);
   const wallsAfterCount = Number(wallsAfterResult.count);
 
+  const [palettesAfterResult] = await db.select({ count: count() }).from(palettes);
+  const palettesAfterCount = Number(palettesAfterResult.count);
+
   const [canvasesAfterResult] = await db.select({ count: count() }).from(canvases);
   const canvasesAfterCount = Number(canvasesAfterResult.count);
 
+  const skippedPaletteCount = paletteSeeds.length - insertedPalettes.length;
   const skippedWallCount = wallSeeds.length - insertedWalls.length;
   const skippedCanvasCount = canvasSeeds.length - insertedCanvases.length;
 
+  console.log(`Palettes before seed: ${palettesBeforeCount}`);
+  console.log(`Inserted palettes: ${insertedPalettes.length}`);
+
+  if (insertedPalettes.length > 0) {
+    console.log(
+      `Inserted palette versions: ${insertedPalettes
+        .map((palette) => `${palette.version} (${palette.name})`)
+        .join(", ")}`,
+    );
+  }
+
+  if (skippedPaletteCount > 0) {
+    console.log(`Skipped existing palettes: ${skippedPaletteCount}`);
+  }
+
+  console.log(`Palettes after seed: ${palettesAfterCount}`);
   console.log(`Walls before seed: ${wallsBeforeCount}`);
   console.log(`Inserted walls: ${insertedWalls.length}`);
 

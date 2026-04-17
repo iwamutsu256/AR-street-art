@@ -78,12 +78,12 @@ export default async function Home() {
             {walls.map((wall) => (
               <li className="wall-card" key={wall.id}>
                 <div className="wall-card__image">
-                {wall.photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={wall.photoUrl}
-                    alt={wall.name}
-                  />
+                  {wall.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={wall.photoUrl}
+                      alt={wall.name}
+                    />
                   ) : null}
                 </div>
                 <div className="wall-card__body">
@@ -91,6 +91,11 @@ export default async function Home() {
                   <div className="mono">ID: {wall.id}</div>
                   <div className="muted-copy">
                     緯度経度: {wall.latitude}, {wall.longitude}
+                  </div>
+                  <div className="inline-actions" style={{ marginTop: 16 }}>
+                    <Link className="button button-secondary" href={`/walls/${wall.id}`}>
+                      詳細を見る
+                    </Link>
                   </div>
                 </div>
               </li>

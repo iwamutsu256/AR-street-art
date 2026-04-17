@@ -1,4 +1,4 @@
-import type { WallSummary } from '@street-art/shared';
+import type { CanvasSnapshot, WallDetail, WallSummary } from '@street-art/shared';
 
 export type HealthStatus = {
   ok: boolean;
@@ -44,5 +44,33 @@ export async function getWalls(): Promise<WallSummary[]> {
     return (await res.json()) as WallSummary[];
   } catch {
     return [];
+  }
+}
+
+export async function getWall(id: string): Promise<WallDetail | null> {
+  try {
+    const res = await fetch(getApiUrl(`/walls/${id}`), { cache: 'no-store' });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    return (await res.json()) as WallDetail;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCanvasSnapshot(canvasId: string): Promise<CanvasSnapshot | null> {
+  try {
+    const res = await fetch(getApiUrl(`/canvases/${canvasId}`), { cache: 'no-store' });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    return (await res.json()) as CanvasSnapshot;
+  } catch {
+    return null;
   }
 }

@@ -19,6 +19,7 @@
   --radius-lg: 28px;
   --radius-md: 18px;
   --radius-sm: 12px;
+  --header-height: 72px;
 }
 
 * {
@@ -124,6 +125,13 @@ img {
   width: min(1120px, calc(100% - 32px));
   margin: 0 auto;
   padding: 32px 0 80px;
+}
+
+.page-shell--editor {
+  width: min(1680px, calc(100% - 24px));
+  height: calc(100dvh - var(--header-height));
+  padding: 16px 0;
+  overflow: hidden;
 }
 
 .page-header {
@@ -613,6 +621,343 @@ img {
   padding: 18px;
 }
 
+.page-shell--wide {
+  width: min(1320px, calc(100% - 32px));
+}
+
+.wall-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 24px;
+}
+
+.wall-detail-image {
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.wall-detail-image img {
+  width: 100%;
+  height: auto;
+}
+
+.info-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.canvas-editor {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 280px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.canvas-sidebar {
+  min-height: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.canvas-panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.canvas-panel--grow {
+  min-height: 0;
+  overflow: auto;
+}
+
+.canvas-stage-shell {
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  border-radius: 26px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.palette-swatch {
+  position: relative;
+  min-height: 48px;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(31, 26, 20, 0.12);
+}
+
+.palette-swatch span {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.palette-swatch.is-selected {
+  border-color: var(--accent-strong);
+  transform: translateY(-1px);
+}
+
+.segmented-control {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.segmented-control__button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.segmented-control__button.is-active {
+  background: var(--accent);
+  color: #fff8f4;
+}
+
+.segmented-control--vertical {
+  grid-auto-flow: row;
+}
+
+.canvas-selected-color {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+}
+
+.canvas-selected-color strong {
+  color: var(--ink);
+}
+
+.canvas-selected-color i {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 26, 20, 0.14);
+}
+
+.canvas-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(31, 26, 20, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(255, 211, 144, 0.24), transparent 34%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.6) 0,
+      rgba(255, 255, 255, 0.6) 1px,
+      transparent 1px,
+      transparent 28px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.6) 0,
+      rgba(255, 255, 255, 0.6) 1px,
+      transparent 1px,
+      transparent 28px
+    ),
+    linear-gradient(135deg, rgba(255, 252, 245, 0.96), rgba(240, 229, 209, 0.94));
+}
+
+.canvas-stage.is-pannable {
+  cursor: grab;
+}
+
+.canvas-stage:not(.is-pannable) {
+  cursor: crosshair;
+}
+
+.canvas-stage.is-pannable .canvas-stage__canvas {
+  cursor: grab;
+}
+
+.canvas-stage:not(.is-pannable) .canvas-stage__canvas {
+  cursor: crosshair;
+}
+
+.canvas-stage__surface {
+  position: relative;
+  display: block;
+  flex: none;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff8f0;
+  box-shadow: 0 28px 60px rgba(50, 33, 15, 0.16);
+}
+
+.canvas-stage__canvas {
+  position: relative;
+  z-index: 1;
+  display: block;
+  image-rendering: pixelated;
+  touch-action: none;
+}
+
+.canvas-stage__reference,
+.canvas-stage__grid,
+.canvas-stage__cursor {
+  position: absolute;
+  pointer-events: none;
+}
+
+.canvas-stage__reference {
+  inset: 0;
+  z-index: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0.18;
+}
+
+.canvas-stage__grid {
+  inset: 0;
+  z-index: 2;
+  background-image:
+    linear-gradient(to right, rgba(31, 26, 20, 0.16) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(31, 26, 20, 0.16) 1px, transparent 1px);
+}
+
+.canvas-stage__cursor {
+  left: 0;
+  top: 0;
+  z-index: 3;
+  border: 1px solid rgba(182, 76, 45, 0.94);
+  background: rgba(182, 76, 45, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+}
+
+.canvas-view-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.canvas-minimap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 236, 220, 0.94)),
+    #fff8f0;
+  cursor: pointer;
+}
+
+.canvas-minimap__reference {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.canvas-minimap__canvas {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.canvas-minimap__viewport {
+  position: absolute;
+  z-index: 2;
+  min-width: 12px;
+  min-height: 12px;
+  border: 2px solid var(--accent-strong);
+  box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.canvas-info-list {
+  display: grid;
+  gap: 10px;
+}
+
+.canvas-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.canvas-info-row span {
+  color: var(--muted);
+}
+
+.canvas-sidebar__leave {
+  width: 100%;
+}
+
+.tag--connecting {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.tag--open {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.tag--closed,
+.tag--error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .mono {
   font-family:
     "SFMono-Regular",
@@ -637,7 +982,32 @@ img {
   gap: 24px;
 }
 
+@media (max-width: 1200px) {
+  .canvas-editor {
+    grid-template-columns: 280px minmax(0, 1fr) 240px;
+  }
+}
+
+@media (max-width: 960px) {
+  .page-shell--editor {
+    height: auto;
+    overflow: visible;
+  }
+
+  .canvas-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-stage {
+    min-height: 420px;
+  }
+}
+
 @media (max-width: 720px) {
+  :root {
+    --header-height: 64px;
+  }
+
   .site-header__inner {
     width: min(100% - 20px, 1120px);
     min-height: 64px;
@@ -659,6 +1029,18 @@ img {
     padding-bottom: 56px;
   }
 
+  .page-shell--wide {
+    width: min(100% - 20px, 1320px);
+  }
+
+  .page-shell--editor {
+    width: min(100% - 16px, 1680px);
+    height: auto;
+    padding-top: 12px;
+    padding-bottom: 20px;
+    overflow: visible;
+  }
+
   .page-header,
   .section-topline {
     flex-direction: column;
@@ -671,5 +1053,17 @@ img {
 
   .map-canvas {
     min-height: 300px;
+  }
+
+  .wall-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .palette-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .canvas-stage {
+    min-height: 420px;
   }
 }

@@ -20,6 +20,14 @@ export const walls = pgTable('walls', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const palettes = pgTable('palettes', {
+  version: text('version').primaryKey(),
+  name: text('name').notNull(),
+  colors: jsonb('colors').$type<string[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const canvases = pgTable('canvases', {
   id: text('id').primaryKey(),
   wallId: text('wall_id')

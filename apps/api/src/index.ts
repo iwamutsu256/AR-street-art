@@ -1,23 +1,237 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import type { IncomingMessage, Server } from 'node:http';
-import sharp from 'sharp';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { CANVAS_MAX_SIZE } from '@street-art/shared';
-import { asc, eq, sql as drizzleSql } from 'drizzle-orm';
+import {
+  CANVAS_COLOR_COUNT,
+  CANVAS_MAX_SIZE,
+  DEFAULT_PALETTE_COLORS,
+  DEFAULT_PALETTE_VERSION,
+  type CanvasSnapshot,
+  type PixelAppliedMessage,
+} from '@street-art/shared';
+import { asc, eq } from 'drizzle-orm';
 import { WebSocketServer, WebSocket } from 'ws';
 import { env } from './lib/env.js';
 import { db, sql } from './lib/db.js';
 import { redis } from './lib/redis.js';
-import { canvases, walls } from './db/schema.js';
+import { canvases, palettes, walls } from './db/schema.js';
 import { uploadWallImagesToR2 } from './lib/s3.js';
 
 const app = new Hono();
 
 app.use('*', cors({ origin: env.appOrigin, credentials: true }));
+
+const CANVAS_FLUSH_INTERVAL_MS = 5_000;
+const DIRTY_CANVAS_SET_KEY = 'canvas:dirty';
+
+type CanvasMeta = {
+  id: string;
+  wallId: string;
+  width: number;
+  height: number;
+  paletteVersion: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function getCanvasPixelsKey(canvasId: string) {
+  return `canvas:${canvasId}:pixels`;
+}
+
+function getCanvasMetaKey(canvasId: string) {
+  return `canvas:${canvasId}:meta`;
+}
+
+function createBlankPixelData(width: number, height: number) {
+  return Buffer.alloc(width * height, 0);
+}
+
+function createCanvasMeta(row: {
+  id: string;
+  wallId: string;
+  width: number;
+  height: number;
+  paletteVersion: string;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: row.id,
+    wallId: row.wallId,
+    width: row.width,
+    height: row.height,
+    paletteVersion: row.paletteVersion,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  } satisfies CanvasMeta;
+}
+
+function parseCornerCoordinates(value: unknown) {
+  if (typeof value === 'string') {
+    return JSON.parse(value);
+  }
+
+  return value;
+}
+
+function parseCanvasMeta(record: Record<string, string>) {
+  if (
+    !record.id ||
+    !record.wallId ||
+    !record.width ||
+    !record.height ||
+    !record.paletteVersion ||
+    !record.createdAt ||
+    !record.updatedAt
+  ) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    wallId: record.wallId,
+    width: Number(record.width),
+    height: Number(record.height),
+    paletteVersion: record.paletteVersion,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  } satisfies CanvasMeta;
+}
+
+async function ensureRedisReady() {
+  if (redis.status === 'wait') {
+    await redis.connect();
+  }
+}
+
+async function getPaletteColors(version: string) {
+  const [paletteRow] = await db
+    .select({ colors: palettes.colors })
+    .from(palettes)
+    .where(eq(palettes.version, version))
+    .limit(1);
+
+  return paletteRow?.colors ?? DEFAULT_PALETTE_COLORS;
+}
+
+async function getCanvasState(canvasId: string) {
+  await ensureRedisReady();
+
+  const [cachedMetaRecord, cachedPixels] = await Promise.all([
+    redis.hgetall(getCanvasMetaKey(canvasId)),
+    redis.getBuffer(getCanvasPixelsKey(canvasId)),
+  ]);
+
+  const cachedMeta = parseCanvasMeta(cachedMetaRecord);
+
+  if (cachedMeta && cachedPixels) {
+    return { meta: cachedMeta, pixels: Buffer.from(cachedPixels) };
+  }
+
+  const [canvasRow] = await db
+    .select({
+      id: canvases.id,
+      wallId: canvases.wallId,
+      width: canvases.width,
+      height: canvases.height,
+      paletteVersion: canvases.paletteVersion,
+      pixelData: canvases.pixelData,
+      createdAt: canvases.createdAt,
+      updatedAt: canvases.updatedAt,
+    })
+    .from(canvases)
+    .where(eq(canvases.id, canvasId))
+    .limit(1);
+
+  if (!canvasRow) {
+    return null;
+  }
+
+  const pixels =
+    canvasRow.pixelData && canvasRow.pixelData.length === canvasRow.width * canvasRow.height
+      ? Buffer.from(canvasRow.pixelData)
+      : createBlankPixelData(canvasRow.width, canvasRow.height);
+  const meta = createCanvasMeta(canvasRow);
+
+  await Promise.all([
+    redis.set(getCanvasPixelsKey(canvasId), pixels),
+    redis.hset(getCanvasMetaKey(canvasId), {
+      id: meta.id,
+      wallId: meta.wallId,
+      width: String(meta.width),
+      height: String(meta.height),
+      paletteVersion: meta.paletteVersion,
+      createdAt: meta.createdAt,
+      updatedAt: meta.updatedAt,
+    }),
+  ]);
+
+  return { meta, pixels };
+}
+
+function buildCanvasSnapshot(meta: CanvasMeta, pixels: Buffer, palette: string[]): CanvasSnapshot {
+  return {
+    type: 'canvas:snapshot',
+    canvasId: meta.id,
+    wallId: meta.wallId,
+    width: meta.width,
+    height: meta.height,
+    paletteVersion: meta.paletteVersion,
+    palette,
+    pixels: pixels.toString('base64'),
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+  };
+}
+
+async function getCanvasSnapshot(canvasId: string) {
+  const state = await getCanvasState(canvasId);
+
+  if (!state) {
+    return null;
+  }
+
+  const palette = await getPaletteColors(state.meta.paletteVersion);
+  return buildCanvasSnapshot(state.meta, state.pixels, palette);
+}
+
+async function flushDirtyCanvases() {
+  try {
+    await ensureRedisReady();
+    const dirtyCanvasIds = await redis.smembers(DIRTY_CANVAS_SET_KEY);
+
+    for (const canvasId of dirtyCanvasIds) {
+      const state = await getCanvasState(canvasId);
+
+      if (!state) {
+        await redis.srem(DIRTY_CANVAS_SET_KEY, canvasId);
+        continue;
+      }
+
+      await db
+        .update(canvases)
+        .set({
+          pixelData: state.pixels,
+          updatedAt: new Date(state.meta.updatedAt),
+        })
+        .where(eq(canvases.id, canvasId));
+
+      await redis.srem(DIRTY_CANVAS_SET_KEY, canvasId);
+    }
+  } catch (error) {
+    console.error('[canvas] Failed to flush dirty canvases:', error);
+  }
+}
+
+const canvasFlushInterval = setInterval(() => {
+  void flushDirtyCanvases();
+}, CANVAS_FLUSH_INTERVAL_MS);
+
+canvasFlushInterval.unref?.();
 
 app.get('/', (c) => c.json({ ok: true, service: 'api' }));
 
@@ -79,34 +293,41 @@ app.get('/walls', async (c) => {
  */
 app.get('/walls/:id', async (c) => {
   const id = c.req.param('id');
-  // select()で全カラムを取得するのではなく、必要なカラムを明示的に指定します。
-  // これにより、jsonb型などの特殊な型を安全に扱うことができます。
-  const [row] = await db
-    .select({
-      id: walls.id,
-      name: walls.name,
-      latitude: walls.latitude,
-      longitude: walls.longitude,
-      originalImageUrl: walls.originalImageUrl,
-      thumbnailImageUrl: walls.thumbnailImageUrl,
-      rectifiedImageUrl: walls.rectifiedImageUrl,
-      cornerCoordinates: walls.cornerCoordinates,
-      approxHeading: walls.approxHeading,
-      visibilityRadiusM: walls.visibilityRadiusM,
-      createdAt: walls.createdAt,
-    })
-    .from(walls)
-    .where(eq(walls.id, id))
-    .limit(1);
+  const [[row] = [], [canvasRow] = []] = await Promise.all([
+    db
+      .select({
+        id: walls.id,
+        name: walls.name,
+        latitude: walls.latitude,
+        longitude: walls.longitude,
+        originalImageUrl: walls.originalImageUrl,
+        thumbnailImageUrl: walls.thumbnailImageUrl,
+        rectifiedImageUrl: walls.rectifiedImageUrl,
+        cornerCoordinates: walls.cornerCoordinates,
+        approxHeading: walls.approxHeading,
+        visibilityRadiusM: walls.visibilityRadiusM,
+        createdAt: walls.createdAt,
+      })
+      .from(walls)
+      .where(eq(walls.id, id))
+      .limit(1),
+    db
+      .select({
+        id: canvases.id,
+        width: canvases.width,
+        height: canvases.height,
+        paletteVersion: canvases.paletteVersion,
+      })
+      .from(canvases)
+      .where(eq(canvases.wallId, id))
+      .orderBy(asc(canvases.createdAt))
+      .limit(1),
+  ]);
 
   if (!row) {
     return c.json({ message: 'Wall not found' }, 404);
   }
 
-  // Drizzleから返される生のオブジェクトを直接シリアライズする際の問題を避けるため、
-  // レスポンスオブジェクトを明示的に構築します。
-  // また、cornerCoordinatesはドライバの挙動によって文字列として返されることがあるため、
-  // 型をチェックして必要であればJSON.parseでパースします。
   const responseData = {
     id: row.id,
     name: row.name,
@@ -115,14 +336,12 @@ app.get('/walls/:id', async (c) => {
     originalImageUrl: row.originalImageUrl,
     thumbnailImageUrl: row.thumbnailImageUrl,
     rectifiedImageUrl: row.rectifiedImageUrl,
-    cornerCoordinates:
-      typeof row.cornerCoordinates === 'string'
-        ? JSON.parse(row.cornerCoordinates)
-        : row.cornerCoordinates,
+    cornerCoordinates: parseCornerCoordinates(row.cornerCoordinates),
     approxHeading: row.approxHeading,
     visibilityRadiusM: row.visibilityRadiusM,
     createdAt: row.createdAt,
-    photoUrl: row.thumbnailImageUrl, // フロントエンドのWallSummaryとの互換性のため
+    photoUrl: row.thumbnailImageUrl,
+    canvas: canvasRow ?? null,
   };
   return c.json(responseData);
 });
@@ -264,6 +483,8 @@ app.post('/walls', async (c) => {
           wallId: newWallId,
           width: canvasWidth,
           height: canvasHeight,
+          paletteVersion: DEFAULT_PALETTE_VERSION,
+          pixelData: createBlankPixelData(canvasWidth, canvasHeight),
         })
         .returning({
           id: canvases.id,
@@ -293,41 +514,61 @@ app.post('/walls', async (c) => {
 const createCanvasSchema = z.object({
   width: z.preprocess(
     (val) => Number(val),
-    z.number().int().positive('width must be a positive integer').max(512, "max width is 512")
+    z.number()
+      .int()
+      .positive('width must be a positive integer')
+      .max(CANVAS_MAX_SIZE, `max width is ${CANVAS_MAX_SIZE}`)
   ),
   height: z.preprocess(
     (val) => Number(val),
-    z.number().int().positive('height must be a positive integer').max(512, 'max height is 512')
+    z.number()
+      .int()
+      .positive('height must be a positive integer')
+      .max(CANVAS_MAX_SIZE, `max height is ${CANVAS_MAX_SIZE}`)
   ),
-  paletteVersion: z.string().optional().default('v1'),
+  paletteVersion: z.string().min(1).optional().default(DEFAULT_PALETTE_VERSION),
 });
 
 app.post('/walls/:wallId/canvases', async (c) => {
   const wallId = c.req.param('wallId');
   const body = await c.req.json();
   const [existingWall] = await db.select({ id: walls.id }).from(walls).where(eq(walls.id, wallId)).limit(1);
+
   if (!existingWall) {
-    return c.json({ message: 'wall not found'}, 404);
+    return c.json({ message: 'wall not found' }, 404);
   }
+
   const parsed = createCanvasSchema.safeParse(body);
+
   if (!parsed.success) {
     return c.json({ errors: parsed.error.issues }, 400);
   }
+
   const { width, height, paletteVersion } = parsed.data;
-  const pixelDataBuffer = Buffer.alloc(width * height, 0);
+  const [existingPalette] = await db
+    .select({ version: palettes.version })
+    .from(palettes)
+    .where(eq(palettes.version, paletteVersion))
+    .limit(1);
+
+  if (!existingPalette) {
+    return c.json({ message: 'palette not found' }, 400);
+  }
 
   try {
     const newCanvasId = randomUUID();
-    const [newCanvas] = await db.insert(canvases).values({ 
-      id: newCanvasId,
-      wallId: wallId,
-      width: width,
-      height: height,
-      paletteVersion: paletteVersion,
-      pixelData: pixelDataBuffer,
-    }).returning();
-    // Drizzleから返される生のオブジェクトを直接シリアライズする際の問題を避けるため、
-    // レスポンスオブジェクトを明示的に構築します。
+    const [newCanvas] = await db
+      .insert(canvases)
+      .values({
+        id: newCanvasId,
+        wallId,
+        width,
+        height,
+        paletteVersion,
+        pixelData: createBlankPixelData(width, height),
+      })
+      .returning();
+
     const responseData = {
       id: newCanvas.id,
       wallId: newCanvas.wallId,
@@ -338,34 +579,26 @@ app.post('/walls/:wallId/canvases', async (c) => {
       updatedAt: newCanvas.updatedAt,
       message: 'canvas created successfully',
     };
+
     return c.json(responseData, 201);
   } catch (error) {
     console.error('Failed to create canvas:', error);
-    return c.json({ message: `Failed to create canvas: ${error instanceof Error ? error.message : 'Unknown error'}`});
+    return c.json(
+      { message: `Failed to create canvas: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      500
+    );
   }
 });
 
 app.get('/canvases/:canvasId', async (c) => {
   const canvasId = c.req.param('canvasId');
-  // select()やスプレッド構文(...canvasRow)を避け、明示的にカラム指定とレスポンス構築を行います。
-  const [canvasRow] = await db.select().from(canvases).where(eq(canvases.id, canvasId)).limit(1);
-  if (!canvasRow || !canvasRow.pixelData) {
+  const snapshot = await getCanvasSnapshot(canvasId);
+
+  if (!snapshot) {
     return c.json({ message: 'canvas not found' }, 404);
   }
-  const pixelDataBase64 = Buffer.from(canvasRow.pixelData).toString('base64');
 
-  const responseData = {
-    id: canvasRow.id,
-    wallId: canvasRow.wallId,
-    width: canvasRow.width,
-    height: canvasRow.height,
-    paletteVersion: canvasRow.paletteVersion,
-    createdAt: canvasRow.createdAt,
-    updatedAt: canvasRow.updatedAt,
-    pixelData: pixelDataBase64,
-  };
-
-  return c.json(responseData);
+  return c.json(snapshot);
 });
 
 const server = serve(
@@ -381,63 +614,121 @@ const server = serve(
 const wss = new WebSocketServer({ server: server as Server });
 const canvasConnections = new Map<string, Set<WebSocket>>();
 
-const pixelUpdateSchema = z.object({
-  type: z.literal('pixelUpdate'),
+const pixelSetSchema = z.object({
+  type: z.literal('pixel:set'),
+  canvasId: z.string().min(1),
   x: z.number().int().min(0),
   y: z.number().int().min(0),
-  colorIndex: z.number().int().min(0).max(63),
+  color: z.number().int().min(0).max(CANVAS_COLOR_COUNT - 1),
 });
+
+function sendWebSocketMessage(ws: WebSocket, payload: unknown) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+async function broadcastCanvasSnapshot(ws: WebSocket, canvasId: string) {
+  const snapshot = await getCanvasSnapshot(canvasId);
+
+  if (!snapshot) {
+    sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
+    ws.close(1008, 'canvas not found');
+    return;
+  }
+
+  sendWebSocketMessage(ws, snapshot);
+}
+
+async function handlePixelSet(ws: WebSocket, canvasId: string, rawMessage: string) {
+  try {
+    const parsedJson = JSON.parse(rawMessage);
+    const parsedMessage = pixelSetSchema.safeParse(parsedJson);
+
+    if (!parsedMessage.success) {
+      sendWebSocketMessage(ws, {
+        type: 'error',
+        message: 'invalid message format',
+        issues: parsedMessage.error.issues,
+      });
+      return;
+    }
+
+    const { canvasId: incomingCanvasId, x, y, color } = parsedMessage.data;
+
+    if (incomingCanvasId !== canvasId) {
+      sendWebSocketMessage(ws, {
+        type: 'error',
+        message: 'canvasId does not match the connected canvas',
+      });
+      return;
+    }
+
+    const state = await getCanvasState(canvasId);
+
+    if (!state) {
+      sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
+      return;
+    }
+
+    if (x >= state.meta.width || y >= state.meta.height) {
+      sendWebSocketMessage(ws, { type: 'error', message: 'Pixel coordinates out of bounds' });
+      return;
+    }
+
+    await ensureRedisReady();
+
+    const updatedAt = new Date().toISOString();
+    const offset = y * state.meta.width + x;
+
+    await Promise.all([
+      redis.setrange(getCanvasPixelsKey(canvasId), offset, String.fromCharCode(color)),
+      redis.hset(getCanvasMetaKey(canvasId), 'updatedAt', updatedAt),
+      redis.sadd(DIRTY_CANVAS_SET_KEY, canvasId),
+    ]);
+
+    const broadcastMessage: PixelAppliedMessage = {
+      type: 'pixel:applied',
+      canvasId,
+      x,
+      y,
+      color,
+    };
+    const encodedMessage = JSON.stringify(broadcastMessage);
+
+    canvasConnections.get(canvasId)?.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(encodedMessage);
+      }
+    });
+  } catch (error) {
+    console.error(`[WS] Error processing message for canvas ${canvasId}:`, error);
+    sendWebSocketMessage(ws, { type: 'error', message: 'Failed to process message' });
+  }
+}
 
 wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
   const pathSegments = url.pathname.split('/').filter(Boolean);
+
   if (pathSegments[0] !== 'ws' || pathSegments[1] !== 'canvases' || !pathSegments[2]) {
     ws.close(1008, 'invalid WebSocket path');
     return;
   }
+
   const canvasId = pathSegments[2];
-  console.log(`[WS] Client connected to canfas: ${canvasId}`);
+
+  console.log(`[WS] Client connected to canvas: ${canvasId}`);
+
   if (!canvasConnections.has(canvasId)) {
     canvasConnections.set(canvasId, new Set());
   }
-  canvasConnections.get(canvasId)!.add(ws);
-  ws.on('message', async (message) => {
-    try {
-      const data = JSON.parse(message.toString());
-      const parsed = pixelUpdateSchema.safeParse(data);
-      if (!parsed.success) {
-        ws.send(JSON.stringify({ type: 'error', message: 'invalid message format', issues: parsed.error.issues }));
-        return;
-      }
-      
-      const { x, y, colorIndex } = parsed.data;
-      const [canvas] = await db.select({ width: canvases.width, height: canvases.height, pixelData: canvases.pixelData }).from(canvases).where(eq(canvases.id, canvasId)).limit(1);
-      if (!canvas || !canvas.pixelData) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Canvas not found' }));
-        return;
-      }
 
-      if (x >= canvas.width || y >= canvas.height) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Pixel coordinates out of bounds' }));
-        return;
-      }
+  canvasConnections.get(canvasId)?.add(ws);
+  void broadcastCanvasSnapshot(ws, canvasId);
 
-      const updatedPixelData = Buffer.from(canvas.pixelData);
-      const offset = y * canvas.width + x;
-      updatedPixelData[offset] = colorIndex;
-
-      await db.update(canvases).set({ pixelData: updatedPixelData, updatedAt: new Date() }).where(eq(canvases.id, canvasId));
-
-      const broadcastMessage = JSON.stringify({ type: 'pixelUpdate', x, y, colorIndex });
-      canvasConnections.get(canvasId)?.forEach((client) => {
-        if (client !== ws && client.readyState === WebSocket.OPEN) {
-          client.send(broadcastMessage);
-        }
-      });
-    } catch (e) {
-      console.error(`[WS] Error processing message for canvas ${canvasId}:`, e);
-      ws.send(JSON.stringify({ type: 'error', message: 'Failed to process message' }));
-    }
+  ws.on('message', (message) => {
+    void handlePixelSet(ws, canvasId, message.toString());
   });
 
   ws.on('close', () => {
@@ -455,3 +746,31 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
 });
 
 console.log('WebSocket server is running.');
+
+let isShuttingDown = false;
+
+async function shutdown() {
+  if (isShuttingDown) {
+    return;
+  }
+
+  isShuttingDown = true;
+  clearInterval(canvasFlushInterval);
+  await flushDirtyCanvases();
+
+  try {
+    if (redis.status === 'ready' || redis.status === 'connect' || redis.status === 'wait') {
+      await redis.quit();
+    }
+  } catch {
+    redis.disconnect();
+  }
+}
+
+process.once('SIGINT', () => {
+  void shutdown().finally(() => process.exit(0));
+});
+
+process.once('SIGTERM', () => {
+  void shutdown().finally(() => process.exit(0));
+});
