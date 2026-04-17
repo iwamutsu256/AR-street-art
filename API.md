@@ -137,6 +137,8 @@ APIサーバー、データベース、Redisの稼働状況を確認するため
     *   `originalImageFile` (File): ユーザーがアップロードした元の画像ファイル。必須。
     *   `thumbnailImageFile` (File): サムネイル画像ファイル。必須。
     *   `rectifiedImageFile` (File): 射影補正された画像ファイル。必須。
+    *   `canvasWidth` (number): キャンバスの横幅。必須 (512以下)
+    *   `canvasHeight` (number): キャンバスの高さ。必須 (512以下)
 
 #### レスポンス
 **成功時 (HTTP 201 Created)**
