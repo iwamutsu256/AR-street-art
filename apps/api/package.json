@@ -26,6 +26,7 @@
     "zod": "^4.1.5"
   },
   "devDependencies": {
+    "@types/ioredis-mock": "^8.2.7",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.5.2",
     "@types/ws": "^8.18.1",
