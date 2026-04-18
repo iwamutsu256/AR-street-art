@@ -23,6 +23,9 @@ import { uploadWallImagesToR2 } from './lib/s3.js';
 
 const app = new Hono();
 
+// Pub/Sub用に別のRedisクライアントを複製
+const subscriber = redis.duplicate();
+
 app.use('*', cors({ origin: env.appOrigin, credentials: true }));
 
 const CANVAS_FLUSH_INTERVAL_MS = 5_000;
@@ -102,7 +105,7 @@ function parseCanvasMeta(record: Record<string, string>) {
   } satisfies CanvasMeta;
 }
 
-async function ensureRedisReady() {
+export async function ensureRedisReady() {
   if (redis.status === 'wait') {
     await redis.connect();
   }
@@ -118,7 +121,7 @@ async function getPaletteColors(version: string) {
   return paletteRow?.colors ?? DEFAULT_PALETTE_COLORS;
 }
 
-async function getCanvasState(canvasId: string) {
+export async function getCanvasState(canvasId: string) {
   await ensureRedisReady();
 
   const [cachedMetaRecord, cachedPixels] = await Promise.all([
@@ -614,12 +617,42 @@ const server = serve(
 const wss = new WebSocketServer({ server: server as Server });
 const canvasConnections = new Map<string, Set<WebSocket>>();
 
+subscriber.on('message', (channel, message) => {
+  // channelの形式は 'canvas:<canvasId>:updates'
+  const canvasId = channel.split(':')[1];
+  if (!canvasId) {
+    return;
+  }
+
+  const connections = canvasConnections.get(canvasId);
+  if (connections) {
+    // Redisから受け取ったメッセージを、このインスタンスに接続している全クライアントにブロードキャスト
+    connections.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+});
+
 const pixelSetSchema = z.object({
   type: z.literal('pixel:set'),
   canvasId: z.string().min(1),
   x: z.number().int().min(0),
   y: z.number().int().min(0),
   color: z.number().int().min(0).max(CANVAS_COLOR_COUNT - 1),
+});
+
+const pixelsSetSchema = z.object({
+  type: z.literal('pixels:set'),
+  canvasId: z.string().min(1),
+  pixels: z.array(
+    z.object({
+      x: z.number().int().min(0),
+      y: z.number().int().min(0),
+      color: z.number().int().min(0).max(CANVAS_COLOR_COUNT - 1),
+    })
+  ).min(1).max(100), // 一度に送信できるピクセル数に上限を設定
 });
 
 function sendWebSocketMessage(ws: WebSocket, payload: unknown) {
@@ -640,67 +673,100 @@ async function broadcastCanvasSnapshot(ws: WebSocket, canvasId: string) {
   sendWebSocketMessage(ws, snapshot);
 }
 
-async function handlePixelSet(ws: WebSocket, canvasId: string, rawMessage: string) {
+export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMessage: string) {
   try {
     const parsedJson = JSON.parse(rawMessage);
-    const parsedMessage = pixelSetSchema.safeParse(parsedJson);
+    const messageType = parsedJson?.type;
 
-    if (!parsedMessage.success) {
-      sendWebSocketMessage(ws, {
-        type: 'error',
-        message: 'invalid message format',
-        issues: parsedMessage.error.issues,
-      });
-      return;
-    }
-
-    const { canvasId: incomingCanvasId, x, y, color } = parsedMessage.data;
-
-    if (incomingCanvasId !== canvasId) {
-      sendWebSocketMessage(ws, {
-        type: 'error',
-        message: 'canvasId does not match the connected canvas',
-      });
-      return;
-    }
-
-    const state = await getCanvasState(canvasId);
-
-    if (!state) {
-      sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
-      return;
-    }
-
-    if (x >= state.meta.width || y >= state.meta.height) {
-      sendWebSocketMessage(ws, { type: 'error', message: 'Pixel coordinates out of bounds' });
-      return;
-    }
-
-    await ensureRedisReady();
-
-    const updatedAt = new Date().toISOString();
-    const offset = y * state.meta.width + x;
-
-    await Promise.all([
-      redis.setrange(getCanvasPixelsKey(canvasId), offset, String.fromCharCode(color)),
-      redis.hset(getCanvasMetaKey(canvasId), 'updatedAt', updatedAt),
-      redis.sadd(DIRTY_CANVAS_SET_KEY, canvasId),
-    ]);
-
-    const broadcastMessage: PixelAppliedMessage = {
-      type: 'pixel:applied',
-      canvasId,
-      x,
-      y,
-      color,
-    };
-    const encodedMessage = JSON.stringify(broadcastMessage);
-
-    canvasConnections.get(canvasId)?.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(encodedMessage);
+    if (messageType === 'pixel:set') {
+      const parsedMessage = pixelSetSchema.safeParse(parsedJson);
+      if (!parsedMessage.success) {
+        sendWebSocketMessage(ws, { type: 'error', message: 'invalid message format', issues: parsedMessage.error.issues });
+        return;
       }
-    });
+
+      const { canvasId: incomingCanvasId, x, y, color } = parsedMessage.data;
+      if (incomingCanvasId !== canvasId) {
+        sendWebSocketMessage(ws, { type: 'error', message: 'canvasId does not match the connected canvas' });
+        return;
+      }
+
+      const state = await getCanvasState(canvasId);
+      if (!state) {
+        sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
+        return;
+      }
+
+      if (x >= state.meta.width || y >= state.meta.height) {
+        sendWebSocketMessage(ws, { type: 'error', message: 'Pixel coordinates out of bounds' });
+        return;
+      }
+
+      await ensureRedisReady();
+      const updatedAt = new Date().toISOString();
+      const offset = y * state.meta.width + x;
+
+      // 複数のRedisコマンドをpipelineでまとめて実行し、ネットワークラウンドトリップを削減
+      await redis
+        .multi()
+        .setrange(getCanvasPixelsKey(canvasId), offset, String.fromCharCode(color))
+        .hset(getCanvasMetaKey(canvasId), 'updatedAt', updatedAt)
+        .sadd(DIRTY_CANVAS_SET_KEY, canvasId)
+        .exec();
+
+      const broadcastMessage: PixelAppliedMessage = { type: 'pixel:applied', canvasId, x, y, color };
+      const encodedMessage = JSON.stringify(broadcastMessage);
+      await redis.publish(`canvas:${canvasId}:updates`, encodedMessage);
+
+    } else if (messageType === 'pixels:set') {
+      const parsedMessage = pixelsSetSchema.safeParse(parsedJson);
+      if (!parsedMessage.success) {
+        sendWebSocketMessage(ws, { type: 'error', message: 'invalid message format', issues: parsedMessage.error.issues });
+        return;
+      }
+
+      const { canvasId: incomingCanvasId, pixels } = parsedMessage.data;
+      if (incomingCanvasId !== canvasId) {
+        sendWebSocketMessage(ws, { type: 'error', message: 'canvasId does not match the connected canvas' });
+        return;
+      }
+
+      const state = await getCanvasState(canvasId);
+      if (!state) {
+        sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
+        return;
+      }
+
+      const validPixels = pixels.filter(p => p.x < state.meta.width && p.y < state.meta.height);
+      if (validPixels.length === 0) {
+        return; // 更新するピクセルがない
+      }
+
+      await ensureRedisReady();
+      const updatedAt = new Date().toISOString();
+      const multi = redis.multi();
+
+      for (const pixel of validPixels) {
+        const offset = pixel.y * state.meta.width + pixel.x;
+        multi.setrange(getCanvasPixelsKey(canvasId), offset, String.fromCharCode(pixel.color));
+      }
+      multi.hset(getCanvasMetaKey(canvasId), 'updatedAt', updatedAt);
+      multi.sadd(DIRTY_CANVAS_SET_KEY, canvasId);
+
+      await multi.exec();
+
+      // `PixelsAppliedMessage` に相当するオブジェクトを作成
+      const broadcastMessage = {
+        type: 'pixels:applied',
+        canvasId,
+        pixels: validPixels,
+      };
+      const encodedMessage = JSON.stringify(broadcastMessage);
+      await redis.publish(`canvas:${canvasId}:updates`, encodedMessage);
+
+    } else {
+      sendWebSocketMessage(ws, { type: 'error', message: `unknown message type: ${messageType}` });
+    }
   } catch (error) {
     console.error(`[WS] Error processing message for canvas ${canvasId}:`, error);
     sendWebSocketMessage(ws, { type: 'error', message: 'Failed to process message' });
@@ -717,26 +783,47 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   }
 
   const canvasId = pathSegments[2];
+  const channelName = `canvas:${canvasId}:updates`;
 
   console.log(`[WS] Client connected to canvas: ${canvasId}`);
 
   if (!canvasConnections.has(canvasId)) {
     canvasConnections.set(canvasId, new Set());
+    // このサーバーインスタンスで最初の接続なので、
+    // 他のインスタンスからの更新を受け取るためにRedisチャンネルを購読する
+    subscriber.subscribe(channelName, (err) => {
+      if (err) {
+        console.error(`[WS] Failed to subscribe to Redis channel ${channelName}`, err);
+      } else {
+        console.log(`[WS] Subscribed to Redis channel: ${channelName}`);
+      }
+    });
   }
 
   canvasConnections.get(canvasId)?.add(ws);
   void broadcastCanvasSnapshot(ws, canvasId);
 
   ws.on('message', (message) => {
-    void handlePixelSet(ws, canvasId, message.toString());
+    // 単一または複数のピクセル更新を処理し、Redis経由でブロードキャストする
+    void handleCanvasUpdate(ws, canvasId, message.toString());
   });
 
   ws.on('close', () => {
     console.log(`[WS] Client disconnected from canvas: ${canvasId}`);
     const connections = canvasConnections.get(canvasId);
     connections?.delete(ws);
+
     if (connections?.size === 0) {
       canvasConnections.delete(canvasId);
+      // このインスタンスで最後の接続が切断されたので、
+      // リソースを節約するためにRedisチャンネルの購読を解除する
+      subscriber.unsubscribe(channelName, (err) => {
+        if (err) {
+          console.error(`[WS] Failed to unsubscribe from Redis channel ${channelName}`, err);
+        } else {
+          console.log(`[WS] Unsubscribed from Redis channel: ${channelName}`);
+        }
+      });
     }
   });
 
@@ -757,6 +844,15 @@ async function shutdown() {
   isShuttingDown = true;
   clearInterval(canvasFlushInterval);
   await flushDirtyCanvases();
+
+  try {
+    // すべてのチャンネルの購読を解除し、subscriber接続を閉じる
+    await subscriber.unsubscribe();
+    await subscriber.quit();
+  } catch {
+    // quitが失敗した場合は強制的に切断
+    subscriber.disconnect();
+  }
 
   try {
     if (redis.status === 'ready' || redis.status === 'connect' || redis.status === 'wait') {

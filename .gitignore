@@ -29,3 +29,8 @@ Thumbs.db
 .idea/
 .vscode/
 .eslintcache
+
+# redis test files
+__test__/
+jest.config.js
+load-test.js
