@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './globals.css';
+import NearbyWallBanner from '../components/NearbyWallBanner';
+
 
 export const metadata: Metadata = {
   title: 'Street Art App',
@@ -32,6 +34,9 @@ export default function RootLayout({
           </div>
         </header>
         {children}
+
+        <NearbyWallBanner />
+        
       </body>
     </html>
   );

@@ -1067,3 +1067,48 @@ img {
     min-height: 420px;
   }
 }
+
+
+
+/* AR viewer */
+@keyframes ar-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ar-scan-line {
+  0%   { top: 10%; }
+  50%  { top: 90%; }
+  100% { top: 10%; }
+}
+
+.ar-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid;
+  animation: ar-spin 0.8s linear infinite;
+}
+
+.ar-scan-line {
+  animation: ar-scan-line 2s ease-in-out infinite;
+}
+
+/* Nearby wall banner */
+.nearby-wall-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+}

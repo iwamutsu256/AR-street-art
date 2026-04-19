@@ -44,6 +44,11 @@ export default async function WallDetailPage({ params }: WallDetailPageProps) {
           <Link className="button button-secondary" href="/">
             一覧へ戻る
           </Link>
+          {wall.rectifiedImageUrl ? (
+            <Link className="button button-secondary" href={`/ar/${wall.id}`}>
+              AR で見る
+            </Link>
+          ) : null}
           {wall.canvas ? (
             <Link className="button button-primary" href={`/canvases/${wall.canvas.id}`}>
               壁に書き込む

@@ -28,7 +28,9 @@ export default function NewWallPage() {
         </Link>
       </div>
 
-      <NewWallForm mapTilerKey={process.env.NEXT_PUBLIC_MAPTILER_KEY ?? ''} />
+<NewWallForm mapTilerKey={''} />
+
+
     </main>
   );
 }
