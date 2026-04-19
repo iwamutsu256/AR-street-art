@@ -3,11 +3,17 @@
 import Link from "next/link";
 import {
   useEffect,
+  useCallback,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { CanvasRealtimeMessage, CanvasSnapshot } from "@street-art/shared";
+import {
+  getPaletteIndexFromPixelValue,
+  normalizePixelValue,
+  TRANSPARENT_PIXEL_VALUE,
+  type CanvasSnapshot,
+} from "@street-art/shared";
 import { decodeBase64Pixels, getCanvasWebSocketUrl } from "../../lib/canvas";
 
 type CanvasEditorProps = {
@@ -29,12 +35,45 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function parsePaletteColors(palette: string[]) {
+  return [
+    null,
+    ...palette.map((color) => [
+      Number.parseInt(color.slice(1, 3), 16),
+      Number.parseInt(color.slice(3, 5), 16),
+      Number.parseInt(color.slice(5, 7), 16),
+    ]),
+  ] satisfies Array<number[] | null>;
+}
+
+function decodeSnapshotPixels(encoded: string, paletteLength: number) {
+  const pixels = decodeBase64Pixels(encoded);
+
+  for (let index = 0; index < pixels.length; index += 1) {
+    pixels[index] = normalizePixelValue(pixels[index] ?? 0, paletteLength);
+  }
+
+  return pixels;
+}
+
+function getDefaultSelectedColor(paletteLength: number) {
+  return paletteLength > 0 ? 1 : TRANSPARENT_PIXEL_VALUE;
+}
+
+function getHexColorForPixelValue(pixelValue: number, palette: string[]) {
+  const paletteIndex = getPaletteIndexFromPixelValue(
+    normalizePixelValue(pixelValue, palette.length),
+  );
+
+  return paletteIndex === null ? null : palette[paletteIndex] ?? null;
+}
+
 function drawSnapshotToCanvas(
   canvas: HTMLCanvasElement,
   pixels: Uint8Array,
   width: number,
   height: number,
-  palette: string[],
+  parsedPalette: Array<number[] | null>,
 ) {
   const context = canvas.getContext("2d");
 
@@ -43,34 +82,24 @@ function drawSnapshotToCanvas(
   }
 
   const imageData = context.createImageData(width, height);
+  const data = imageData.data;
 
   for (let index = 0; index < pixels.length; index += 1) {
-    const color = palette[pixels[index]] ?? "#000000";
+    const color = parsedPalette[pixels[index] ?? 0] ?? null;
     const offset = index * 4;
-    imageData.data[offset] = Number.parseInt(color.slice(1, 3), 16);
-    imageData.data[offset + 1] = Number.parseInt(color.slice(3, 5), 16);
-    imageData.data[offset + 2] = Number.parseInt(color.slice(5, 7), 16);
-    imageData.data[offset + 3] = 255;
+
+    if (!color) {
+      data[offset + 3] = 0;
+      continue;
+    }
+
+    data[offset] = color[0];
+    data[offset + 1] = color[1];
+    data[offset + 2] = color[2];
+    data[offset + 3] = 255;
   }
 
   context.putImageData(imageData, 0, 0);
-}
-
-function drawPixel(
-  canvas: HTMLCanvasElement,
-  x: number,
-  y: number,
-  paletteIndex: number,
-  palette: string[],
-) {
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    return;
-  }
-
-  context.fillStyle = palette[paletteIndex] ?? "#000000";
-  context.fillRect(x, y, 1, 1);
 }
 
 function getLinePixels(
@@ -118,9 +147,14 @@ export function CanvasEditor({
   const stageRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const minimapFrameRef = useRef<HTMLDivElement>(null);
+  const dirtyPixelsRef = useRef<Array<{ x: number; y: number; color: number }>>([]);
+  const redrawQueuedRef = useRef(false);
   const socketRef = useRef<WebSocket | null>(null);
-  const pixelsRef = useRef(decodeBase64Pixels(initialSnapshot.pixels));
+  const pixelsRef = useRef(
+    decodeSnapshotPixels(initialSnapshot.pixels, initialSnapshot.palette.length),
+  );
   const paletteRef = useRef(initialSnapshot.palette);
+  const parsedPaletteRef = useRef(parsePaletteColors(initialSnapshot.palette));
   const zoomRef = useRef(
     getInitialZoom(initialSnapshot.width, initialSnapshot.height),
   );
@@ -134,7 +168,9 @@ export function CanvasEditor({
   } | null>(null);
   const lastPointerPixelRef = useRef<{ x: number; y: number } | null>(null);
 
-  const [selectedColor, setSelectedColor] = useState(1);
+  const [selectedColor, setSelectedColor] = useState(() =>
+    getDefaultSelectedColor(initialSnapshot.palette.length),
+  );
   const [palette, setPalette] = useState(initialSnapshot.palette);
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
@@ -155,6 +191,20 @@ export function CanvasEditor({
     top: 0,
     width: 100,
     height: 100,
+    enabled: false,
+  });
+  const [surfaceFrame, setSurfaceFrame] = useState(() => {
+    const initialZoom = getInitialZoom(
+      initialSnapshot.width,
+      initialSnapshot.height,
+    );
+
+    return {
+      left: 0,
+      top: 0,
+      width: initialSnapshot.width * initialZoom,
+      height: initialSnapshot.height * initialZoom,
+    };
   });
 
   useEffect(() => {
@@ -165,14 +215,65 @@ export function CanvasEditor({
     panRef.current = pan;
   }, [pan]);
 
-  function drawAllCanvases() {
+  useEffect(() => {
+    setSelectedColor((current) => {
+      if (current === TRANSPARENT_PIXEL_VALUE || current <= palette.length) {
+        return current;
+      }
+
+      return getDefaultSelectedColor(palette.length);
+    });
+  }, [palette]);
+
+  const drawDirtyPixels = useCallback(() => {
+    if (dirtyPixelsRef.current.length === 0) {
+      return;
+    }
+    const canvas = canvasRef.current;
+    const minimapCanvas = minimapCanvasRef.current;
+    if (!canvas || !minimapCanvas) {
+      return;
+    }
+
+    const mainCtx = canvas.getContext("2d");
+    const minimapCtx = minimapCanvas.getContext("2d");
+    if (!mainCtx || !minimapCtx) {
+      return;
+    }
+    console.log(`[Canvas] Drawing ${dirtyPixelsRef.current.length} dirty pixels.`);
+
+    const pixelsToDraw = [...dirtyPixelsRef.current];
+    dirtyPixelsRef.current = [];
+
+    // ダーティなピクセルを個別に描画する。
+    // getImageData/putImageDataでキャンバス全体を更新するよりも、
+    // 変更箇所が少ない場合はこちらの方が高速なことが多い。
+    for (const pixel of pixelsToDraw) {
+      const colorString = getHexColorForPixelValue(pixel.color, paletteRef.current);
+
+      // メインキャンバスとミニマップの両方を更新
+      if (!colorString) {
+        mainCtx.clearRect(pixel.x, pixel.y, 1, 1);
+        minimapCtx.clearRect(pixel.x, pixel.y, 1, 1);
+        continue;
+      }
+
+      mainCtx.fillStyle = colorString;
+      mainCtx.fillRect(pixel.x, pixel.y, 1, 1);
+      minimapCtx.fillStyle = colorString;
+      minimapCtx.fillRect(pixel.x, pixel.y, 1, 1);
+    }
+  }, []);
+
+  const drawAllCanvases = useCallback(() => {
+    drawDirtyPixels(); // Ensure any pending changes are drawn first
     if (canvasRef.current) {
       drawSnapshotToCanvas(
         canvasRef.current,
         pixelsRef.current,
         initialSnapshot.width,
         initialSnapshot.height,
-        paletteRef.current,
+        parsedPaletteRef.current,
       );
     }
 
@@ -182,57 +283,121 @@ export function CanvasEditor({
         pixelsRef.current,
         initialSnapshot.width,
         initialSnapshot.height,
-        paletteRef.current,
+        parsedPaletteRef.current,
       );
     }
-  }
+  }, [drawDirtyPixels, initialSnapshot.height, initialSnapshot.width]);
 
-  function updateViewportFrameForState(
+  const requestRedraw = useCallback(() => {
+    if (redrawQueuedRef.current) {
+      return;
+    }
+    redrawQueuedRef.current = true;
+    console.log("[Canvas] Redraw requested.");
+    requestAnimationFrame(() => {
+      drawDirtyPixels();
+      redrawQueuedRef.current = false;
+    });
+  }, [drawDirtyPixels]);
+
+  const getViewportMetrics = useCallback((
     nextZoom = zoomRef.current,
-    nextPan = panRef.current,
-  ) {
+    proposedPan = panRef.current,
+  ) => {
     const stage = stageRef.current;
 
     if (!stage) {
-      return;
+      return null;
     }
 
     const stageRect = stage.getBoundingClientRect();
+    const stageWidth = stage.clientWidth;
+    const stageHeight = stage.clientHeight;
+    const contentLeft = stageRect.left + (stageRect.width - stageWidth) / 2;
+    const contentTop = stageRect.top + (stageRect.height - stageHeight) / 2;
     const surfaceWidth = initialSnapshot.width * nextZoom;
     const surfaceHeight = initialSnapshot.height * nextZoom;
-    const surfaceLeft =
-      stageRect.left + (stageRect.width - surfaceWidth) / 2 + nextPan.x;
-    const surfaceTop =
-      stageRect.top + (stageRect.height - surfaceHeight) / 2 + nextPan.y;
+    const maxPanX =
+      surfaceWidth > stageWidth ? (surfaceWidth - stageWidth) / 2 : 0;
+    const maxPanY =
+      surfaceHeight > stageHeight ? (surfaceHeight - stageHeight) / 2 : 0;
+    const clampedPan = {
+      x: maxPanX === 0 ? 0 : clamp(proposedPan.x, -maxPanX, maxPanX),
+      y: maxPanY === 0 ? 0 : clamp(proposedPan.y, -maxPanY, maxPanY),
+    };
+    const relativeLeft = (stageWidth - surfaceWidth) / 2 + clampedPan.x;
+    const relativeTop = (stageHeight - surfaceHeight) / 2 + clampedPan.y;
+    const surfaceLeft = contentLeft + relativeLeft;
+    const surfaceTop = contentTop + relativeTop;
 
     const visibleLeft = clamp(
-      (stageRect.left - surfaceLeft) / nextZoom,
+      (contentLeft - surfaceLeft) / nextZoom,
       0,
       initialSnapshot.width,
     );
     const visibleTop = clamp(
-      (stageRect.top - surfaceTop) / nextZoom,
+      (contentTop - surfaceTop) / nextZoom,
       0,
       initialSnapshot.height,
     );
     const visibleRight = clamp(
-      (stageRect.right - surfaceLeft) / nextZoom,
+      (contentLeft + stageWidth - surfaceLeft) / nextZoom,
       0,
       initialSnapshot.width,
     );
     const visibleBottom = clamp(
-      (stageRect.bottom - surfaceTop) / nextZoom,
+      (contentTop + stageHeight - surfaceTop) / nextZoom,
       0,
       initialSnapshot.height,
     );
 
-    setViewportFrame({
-      left: (visibleLeft / initialSnapshot.width) * 100,
-      top: (visibleTop / initialSnapshot.height) * 100,
-      width: ((visibleRight - visibleLeft) / initialSnapshot.width) * 100,
-      height: ((visibleBottom - visibleTop) / initialSnapshot.height) * 100,
+    return {
+      clampedPan,
+      contentLeft,
+      contentTop,
+      stageWidth,
+      stageHeight,
+      relativeLeft,
+      relativeTop,
+      surfaceLeft,
+      surfaceTop,
+      surfaceWidth,
+      surfaceHeight,
+      visibleLeft,
+      visibleTop,
+      visibleRight,
+      visibleBottom,
+      navigatorEnabled: maxPanX > 0 || maxPanY > 0,
+    };
+  }, [initialSnapshot.height, initialSnapshot.width]);
+
+  const updateViewportFrameForState = useCallback((
+    nextZoom = zoomRef.current,
+    proposedPan = panRef.current,
+  ) => {
+    const metrics = getViewportMetrics(nextZoom, proposedPan);
+
+    if (!metrics) {
+      return proposedPan;
+    }
+
+    setSurfaceFrame({
+      left: metrics.relativeLeft,
+      top: metrics.relativeTop,
+      width: metrics.surfaceWidth,
+      height: metrics.surfaceHeight,
     });
-  }
+
+    setViewportFrame({
+      left: (metrics.visibleLeft / initialSnapshot.width) * 100,
+      top: (metrics.visibleTop / initialSnapshot.height) * 100,
+      width: ((metrics.visibleRight - metrics.visibleLeft) / initialSnapshot.width) * 100,
+      height: ((metrics.visibleBottom - metrics.visibleTop) / initialSnapshot.height) * 100,
+      enabled: metrics.navigatorEnabled,
+    });
+
+    return metrics.clampedPan;
+  }, [getViewportMetrics, initialSnapshot.height, initialSnapshot.width]);
 
   function centerOnContentPosition(contentX: number, contentY: number) {
     const nextZoom = zoomRef.current;
@@ -240,15 +405,15 @@ export function CanvasEditor({
       x: (initialSnapshot.width / 2 - contentX) * nextZoom,
       y: (initialSnapshot.height / 2 - contentY) * nextZoom,
     };
+    const clampedPan = updateViewportFrameForState(nextZoom, nextPan);
 
-    setPan(nextPan);
-    panRef.current = nextPan;
-    updateViewportFrameForState(nextZoom, nextPan);
+    setPan(clampedPan);
+    panRef.current = clampedPan;
   }
 
   useEffect(() => {
     drawAllCanvases();
-  }, [initialSnapshot.height, initialSnapshot.width]);
+  }, [drawAllCanvases]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -289,7 +454,6 @@ export function CanvasEditor({
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
 
-      const stageRect = stage.getBoundingClientRect();
       const currentZoom = zoomRef.current;
       const nextZoom = clamp(
         Number((currentZoom + (event.deltaY > 0 ? -0.5 : 0.5)).toFixed(2)),
@@ -301,52 +465,47 @@ export function CanvasEditor({
         return;
       }
 
-      const surfaceWidth = initialSnapshot.width * currentZoom;
-      const surfaceHeight = initialSnapshot.height * currentZoom;
-      const surfaceLeft =
-        stageRect.left +
-        (stageRect.width - surfaceWidth) / 2 +
-        panRef.current.x;
-      const surfaceTop =
-        stageRect.top +
-        (stageRect.height - surfaceHeight) / 2 +
-        panRef.current.y;
-      const contentX = clamp(
-        (event.clientX - surfaceLeft) / currentZoom,
-        0,
-        initialSnapshot.width,
-      );
-      const contentY = clamp(
-        (event.clientY - surfaceTop) / currentZoom,
-        0,
-        initialSnapshot.height,
-      );
+      const viewport = getViewportMetrics(currentZoom, panRef.current);
+
+      if (!viewport) {
+        return;
+      }
+
+      const contentX = (event.clientX - viewport.surfaceLeft) / currentZoom;
+      const contentY = (event.clientY - viewport.surfaceTop) / currentZoom;
       const nextSurfaceWidth = initialSnapshot.width * nextZoom;
       const nextSurfaceHeight = initialSnapshot.height * nextZoom;
-      const nextPan = {
+      const proposedPan = {
         x:
           event.clientX -
-          stageRect.left -
-          (stageRect.width - nextSurfaceWidth) / 2 -
+          viewport.contentLeft -
+          (viewport.stageWidth - nextSurfaceWidth) / 2 -
           contentX * nextZoom,
         y:
           event.clientY -
-          stageRect.top -
-          (stageRect.height - nextSurfaceHeight) / 2 -
+          viewport.contentTop -
+          (viewport.stageHeight - nextSurfaceHeight) / 2 -
           contentY * nextZoom,
       };
+      const nextPan = updateViewportFrameForState(nextZoom, proposedPan);
 
       setZoom(nextZoom);
       setPan(nextPan);
       zoomRef.current = nextZoom;
       panRef.current = nextPan;
-      updateViewportFrameForState(nextZoom, nextPan);
     };
 
     stage.addEventListener("wheel", handleWheel, { passive: false });
 
     const resizeObserver = new ResizeObserver(() => {
-      updateViewportFrameForState();
+      const nextPan = updateViewportFrameForState();
+
+      if (nextPan.x === panRef.current.x && nextPan.y === panRef.current.y) {
+        return;
+      }
+
+      setPan(nextPan);
+      panRef.current = nextPan;
     });
     resizeObserver.observe(stage);
 
@@ -354,7 +513,12 @@ export function CanvasEditor({
       stage.removeEventListener("wheel", handleWheel);
       resizeObserver.disconnect();
     };
-  }, [initialSnapshot.height, initialSnapshot.width]);
+  }, [
+    getViewportMetrics,
+    initialSnapshot.height,
+    initialSnapshot.width,
+    updateViewportFrameForState,
+  ]);
 
   useEffect(() => {
     const socket = new WebSocket(
@@ -364,63 +528,62 @@ export function CanvasEditor({
     setConnectionState("connecting");
     setStatusMessage("キャンバスに接続しています。");
 
-    const handleMessage = (event: MessageEvent<string>) => {
-      let message: CanvasRealtimeMessage;
-
-      try {
-        message = JSON.parse(event.data) as CanvasRealtimeMessage;
-      } catch {
-        setStatusMessage("不明なメッセージを受信しました。");
-        return;
-      }
-
-      if (message.type === "canvas:snapshot") {
-        pixelsRef.current = decodeBase64Pixels(message.pixels);
-        paletteRef.current = message.palette;
-        setPalette(message.palette);
-        drawAllCanvases();
-        updateViewportFrameForState();
-
-        setStatusMessage(`${wallName ?? "キャンバス"} と同期しました。`);
-        return;
-      }
-
-      if (message.type === "pixel:applied") {
-        const index = message.y * initialSnapshot.width + message.x;
-        pixelsRef.current[index] = message.color;
-
-        if (canvasRef.current) {
-          drawPixel(
-            canvasRef.current,
-            message.x,
-            message.y,
-            message.color,
-            paletteRef.current,
-          );
-        }
-
-        if (minimapCanvasRef.current) {
-          drawPixel(
-            minimapCanvasRef.current,
-            message.x,
-            message.y,
-            message.color,
-            paletteRef.current,
-          );
-        }
-
-        return;
-      }
-
-      setStatusMessage(message.message);
-    };
-
     socket.addEventListener("open", () => {
       setConnectionState("open");
       setStatusMessage("リアルタイム編集が有効です。");
     });
 
-    socket.addEventListener("message", handleMessage);
+    const handleSocketMessage = (event: MessageEvent<string>) => {
+      console.log("[WS] Received message:", event.data);
+
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch (e) {
+        console.error("Failed to parse JSON:", e);
+        return;
+      }
+
+      if (!message?.type) {
+        return;
+      }
+
+      if (message.type === "canvas:snapshot") {
+        pixelsRef.current = decodeSnapshotPixels(
+          message.pixels,
+          message.palette.length,
+        );
+        paletteRef.current = message.palette;
+        dirtyPixelsRef.current = []; // Clear pending changes
+        parsedPaletteRef.current = parsePaletteColors(message.palette);
+        setPalette(message.palette);
+        drawAllCanvases();
+        updateViewportFrameForState();
+        setStatusMessage(`${wallName ?? "キャンバス"} と同期しました。`);
+      } else if (message.type === "pixel:applied") {
+        const { x, y } = message;
+        const color = normalizePixelValue(message.color, paletteRef.current.length);
+        const index = y * initialSnapshot.width + x;
+        if (index >= 0 && index < pixelsRef.current.length) {
+          pixelsRef.current[index] = color;
+        }
+        dirtyPixelsRef.current.push({ x, y, color });
+        requestRedraw();
+      } else if (message.type === "pixels:applied") {
+        for (const pixel of message.pixels) {
+          const index = pixel.y * initialSnapshot.width + pixel.x;
+          const color = normalizePixelValue(
+            pixel.color,
+            paletteRef.current.length,
+          );
+          if (index >= 0 && index < pixelsRef.current.length) {
+            pixelsRef.current[index] = color;
+          }
+          dirtyPixelsRef.current.push({ ...pixel, color });
+        }
+        requestRedraw();
+      }
+    };
 
     socket.addEventListener("close", () => {
       setConnectionState("closed");
@@ -434,22 +597,35 @@ export function CanvasEditor({
       setStatusMessage("WebSocket 接続に失敗しました。");
     });
 
+    socket.onmessage = handleSocketMessage;
+
     return () => {
-      socket.removeEventListener("message", handleMessage);
+      socket.onmessage = null;
       socket.close();
       socketRef.current = null;
     };
   }, [
     initialSnapshot.canvasId,
-    initialSnapshot.height,
-    initialSnapshot.width,
-    wallName,
     wsBase,
+    initialSnapshot.width,
+    drawAllCanvases,
+    requestRedraw,
+    setPalette,
+    setStatusMessage,
+    updateViewportFrameForState,
+    wallName,
   ]);
 
   useEffect(() => {
-    updateViewportFrameForState(zoom, pan);
-  }, [pan, zoom, initialSnapshot.height, initialSnapshot.width]);
+    const nextPan = updateViewportFrameForState(zoom, pan);
+
+    if (nextPan.x === pan.x && nextPan.y === pan.y) {
+      return;
+    }
+
+    setPan(nextPan);
+    panRef.current = nextPan;
+  }, [pan, zoom, updateViewportFrameForState]);
 
   function getPixelPosition(event: ReactPointerEvent<HTMLCanvasElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -466,50 +642,55 @@ export function CanvasEditor({
     };
   }
 
-  function paintPixel(x: number, y: number) {
+  // この関数は、ローカルでの描画とデータモデルの更新のみを担当します。
+  // WebSocketメッセージの送信は行いません。
+  function applyPixelLocally(x: number, y: number, color: number) {
     if (
-      socketRef.current?.readyState !== WebSocket.OPEN ||
       !canvasRef.current
     ) {
       return;
     }
 
     const index = y * initialSnapshot.width + x;
+    const normalizedColor = normalizePixelValue(color, paletteRef.current.length);
 
-    if (pixelsRef.current[index] === selectedColor) {
+    if (pixelsRef.current[index] === normalizedColor) {
       return;
     }
 
-    pixelsRef.current[index] = selectedColor;
-    drawPixel(canvasRef.current, x, y, selectedColor, paletteRef.current);
-
-    if (minimapCanvasRef.current) {
-      drawPixel(
-        minimapCanvasRef.current,
-        x,
-        y,
-        selectedColor,
-        paletteRef.current,
-      );
-    }
-
-    socketRef.current.send(
-      JSON.stringify({
-        type: "pixel:set",
-        canvasId: initialSnapshot.canvasId,
-        x,
-        y,
-        color: selectedColor,
-      }),
-    );
+    pixelsRef.current[index] = normalizedColor;
+    dirtyPixelsRef.current.push({ x, y, color: normalizedColor });
+    requestRedraw();
   }
 
   function paintStroke(
     from: { x: number; y: number },
     to: { x: number; y: number },
   ) {
-    for (const pixel of getLinePixels(from, to)) {
-      paintPixel(pixel.x, pixel.y);
+    if (socketRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const pixelsToPaint = getLinePixels(from, to);
+    const pixelsForMessage: Array<{ x: number; y: number; color: number }> = [];
+    const color = normalizePixelValue(selectedColor, paletteRef.current.length);
+
+    for (const pixel of pixelsToPaint) {
+      const index = pixel.y * initialSnapshot.width + pixel.x;
+      if (pixelsRef.current[index] !== color) {
+        applyPixelLocally(pixel.x, pixel.y, color);
+        pixelsForMessage.push({ ...pixel, color });
+      }
+    }
+
+    if (pixelsForMessage.length > 0) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: "pixels:set", // 複数のピクセルを一度に送信
+          canvasId: initialSnapshot.canvasId,
+          pixels: pixelsForMessage,
+        }),
+      );
     }
   }
 
@@ -553,9 +734,9 @@ export function CanvasEditor({
         x: panStartRef.current.panX + (event.clientX - panStartRef.current.x),
         y: panStartRef.current.panY + (event.clientY - panStartRef.current.y),
       };
-      setPan(nextPan);
-      panRef.current = nextPan;
-      updateViewportFrameForState(zoomRef.current, nextPan);
+      const clampedPan = updateViewportFrameForState(zoomRef.current, nextPan);
+      setPan(clampedPan);
+      panRef.current = clampedPan;
       return;
     }
 
@@ -583,6 +764,10 @@ export function CanvasEditor({
   }
 
   function handleMinimapNavigate(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!viewportFrame.enabled) {
+      return;
+    }
+
     const minimapFrame = minimapFrameRef.current;
 
     if (!minimapFrame) {
@@ -615,6 +800,11 @@ export function CanvasEditor({
         backgroundImage: `url("${referenceImageUrl}")`,
       }
     : undefined;
+  const selectedColorHex = getHexColorForPixelValue(selectedColor, palette);
+  const selectedColorLabel =
+    selectedColor === TRANSPARENT_PIXEL_VALUE
+      ? "透明"
+      : selectedColorHex ?? `色 ${selectedColor}`;
 
   return (
     <section className="canvas-editor">
@@ -635,28 +825,39 @@ export function CanvasEditor({
           <div className="stack-sm">
             <div className="step-badge">Palette</div>
             <h2 className="section-title" style={{ fontSize: "1.2rem" }}>
-              32 colors
+              {palette.length} colors + transparent
             </h2>
             <div className="canvas-selected-color">
               <span>選択中</span>
-              <strong>#{selectedColor}</strong>
-              <i style={{ backgroundColor: palette[selectedColor] }} />
+              <strong>{selectedColorLabel}</strong>
+              <i
+                className={`canvas-selected-color__swatch${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-transparent" : ""}`}
+                style={
+                  selectedColorHex
+                    ? { backgroundColor: selectedColorHex }
+                    : undefined
+                }
+              />
             </div>
           </div>
 
           <div className="palette-grid">
             {palette.map((color, index) => (
               <button
-                key={color}
+                key={`${index}-${color}`}
                 aria-label={`color ${index + 1}`}
-                className={`palette-swatch${selectedColor === index ? " is-selected" : ""}`}
-                onClick={() => setSelectedColor(index)}
+                className={`palette-swatch${selectedColor === index + 1 ? " is-selected" : ""}`}
+                onClick={() => setSelectedColor(index + 1)}
                 style={{ backgroundColor: color }}
                 type="button"
-              >
-                <span>{index}</span>
-              </button>
+              />
             ))}
+            <button
+              aria-label="transparent"
+              className={`palette-swatch palette-swatch--transparent${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-selected" : ""}`}
+              onClick={() => setSelectedColor(TRANSPARENT_PIXEL_VALUE)}
+              type="button"
+            />
           </div>
         </div>
       </aside>
@@ -669,9 +870,10 @@ export function CanvasEditor({
           <div
             className="canvas-stage__surface"
             style={{
-              transform: `translate(${pan.x}px, ${pan.y}px)`,
-              width: initialSnapshot.width * zoom,
-              height: initialSnapshot.height * zoom,
+              left: surfaceFrame.left,
+              top: surfaceFrame.top,
+              width: surfaceFrame.width,
+              height: surfaceFrame.height,
             }}
           >
             <div
@@ -696,8 +898,8 @@ export function CanvasEditor({
               onPointerCancel={handlePointerUp}
               ref={canvasRef}
               style={{
-                width: initialSnapshot.width * zoom,
-                height: initialSnapshot.height * zoom,
+                width: surfaceFrame.width,
+                height: surfaceFrame.height,
               }}
               width={initialSnapshot.width}
             />
@@ -725,14 +927,18 @@ export function CanvasEditor({
           </div>
 
           <div
-            className="canvas-minimap"
+            className={`canvas-minimap${viewportFrame.enabled ? " is-active" : ""}`}
             onPointerDown={(event) => {
+              if (!viewportFrame.enabled) {
+                return;
+              }
+
               event.preventDefault();
               event.currentTarget.setPointerCapture(event.pointerId);
               handleMinimapNavigate(event);
             }}
             onPointerMove={(event) => {
-              if ((event.buttons & 1) !== 1) {
+              if (!viewportFrame.enabled || (event.buttons & 1) !== 1) {
                 return;
               }
 
@@ -758,21 +964,25 @@ export function CanvasEditor({
               ref={minimapCanvasRef}
               width={initialSnapshot.width}
             />
-            <div
-              className="canvas-minimap__viewport"
-              style={{
-                left: `${viewportFrame.left}%`,
-                top: `${viewportFrame.top}%`,
-                width: `${viewportFrame.width}%`,
-                height: `${viewportFrame.height}%`,
-              }}
-            />
+            {viewportFrame.enabled ? (
+              <div
+                className="canvas-minimap__viewport"
+                style={{
+                  left: `${viewportFrame.left}%`,
+                  top: `${viewportFrame.top}%`,
+                  width: `${viewportFrame.width}%`,
+                  height: `${viewportFrame.height}%`,
+                }}
+              />
+            ) : null}
           </div>
 
           <div className="canvas-view-controls">
             <div className="tag">{Math.round(zoom * 100)}%</div>
             <p className="section-copy">
-              ミニビューをドラッグすると表示位置を移動できます。
+              {viewportFrame.enabled
+                ? "ミニビューをドラッグすると表示位置を移動できます。"
+                : "キャンバス全体が表示されています。"}
             </p>
           </div>
         </div>
@@ -800,7 +1010,9 @@ export function CanvasEditor({
             </div>
             <div className="canvas-info-row">
               <span>パレット</span>
-              <strong>{initialSnapshot.paletteVersion}</strong>
+              <strong>
+                {initialSnapshot.paletteVersion} / {palette.length}色 + 透明
+              </strong>
             </div>
             <div className="canvas-info-row">
               <span>カーソル</span>

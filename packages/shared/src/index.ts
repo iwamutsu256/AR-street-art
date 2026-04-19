@@ -89,6 +89,7 @@ export type CreateWallResponse = WallDetail & {
 export const CANVAS_MAX_SIZE = 512;
 export const DEFAULT_CANVAS_SIZE = 128;
 export const CANVAS_COLOR_COUNT = 32;
+export const TRANSPARENT_PIXEL_VALUE = 0;
 export const DEFAULT_PALETTE_VERSION = 'v1';
 export const DEFAULT_PALETTE_NAME = 'default';
 export const DEFAULT_PALETTE_COLORS = [
@@ -125,3 +126,15 @@ export const DEFAULT_PALETTE_COLORS = [
   '#c4b5fd',
   '#8b5cf6',
 ] satisfies string[];
+
+export function normalizePixelValue(value: number, paletteLength: number) {
+  if (!Number.isInteger(value) || value < TRANSPARENT_PIXEL_VALUE) {
+    return TRANSPARENT_PIXEL_VALUE;
+  }
+
+  return value <= Math.max(paletteLength, 0) ? value : TRANSPARENT_PIXEL_VALUE;
+}
+
+export function getPaletteIndexFromPixelValue(value: number) {
+  return value === TRANSPARENT_PIXEL_VALUE ? null : value - 1;
+}
