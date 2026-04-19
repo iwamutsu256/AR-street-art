@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   useEffect,
+  useCallback,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -34,7 +35,7 @@ function drawSnapshotToCanvas(
   pixels: Uint8Array,
   width: number,
   height: number,
-  palette: string[],
+  parsedPalette: number[][],
 ) {
   const context = canvas.getContext("2d");
 
@@ -43,14 +44,15 @@ function drawSnapshotToCanvas(
   }
 
   const imageData = context.createImageData(width, height);
+  const data = imageData.data;
 
   for (let index = 0; index < pixels.length; index += 1) {
-    const color = palette[pixels[index]] ?? "#000000";
+    const color = parsedPalette[pixels[index]] ?? [0, 0, 0];
     const offset = index * 4;
-    imageData.data[offset] = Number.parseInt(color.slice(1, 3), 16);
-    imageData.data[offset + 1] = Number.parseInt(color.slice(3, 5), 16);
-    imageData.data[offset + 2] = Number.parseInt(color.slice(5, 7), 16);
-    imageData.data[offset + 3] = 255;
+    data[offset] = color[0];
+    data[offset + 1] = color[1];
+    data[offset + 2] = color[2];
+    data[offset + 3] = 255;
   }
 
   context.putImageData(imageData, 0, 0);
@@ -118,9 +120,18 @@ export function CanvasEditor({
   const stageRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const minimapFrameRef = useRef<HTMLDivElement>(null);
+  const dirtyPixelsRef = useRef<Array<{ x: number; y: number; color: number }>>([]);
+  const redrawQueuedRef = useRef(false);
   const socketRef = useRef<WebSocket | null>(null);
   const pixelsRef = useRef(decodeBase64Pixels(initialSnapshot.pixels));
   const paletteRef = useRef(initialSnapshot.palette);
+  const parsedPaletteRef = useRef(
+    initialSnapshot.palette.map((color) => [
+      Number.parseInt(color.slice(1, 3), 16),
+      Number.parseInt(color.slice(3, 5), 16),
+      Number.parseInt(color.slice(5, 7), 16),
+    ]),
+  );
   const zoomRef = useRef(
     getInitialZoom(initialSnapshot.width, initialSnapshot.height),
   );
@@ -165,14 +176,49 @@ export function CanvasEditor({
     panRef.current = pan;
   }, [pan]);
 
-  function drawAllCanvases() {
+  const drawDirtyPixels = useCallback(() => {
+    if (dirtyPixelsRef.current.length === 0) {
+      return;
+    }
+    const canvas = canvasRef.current;
+    const minimapCanvas = minimapCanvasRef.current;
+    if (!canvas || !minimapCanvas) {
+      return;
+    }
+
+    const mainCtx = canvas.getContext("2d");
+    const minimapCtx = minimapCanvas.getContext("2d");
+    if (!mainCtx || !minimapCtx) {
+      return;
+    }
+    console.log(`[Canvas] Drawing ${dirtyPixelsRef.current.length} dirty pixels.`);
+
+    const pixelsToDraw = [...dirtyPixelsRef.current];
+    dirtyPixelsRef.current = [];
+
+    // ダーティなピクセルを個別に描画する。
+    // getImageData/putImageDataでキャンバス全体を更新するよりも、
+    // 変更箇所が少ない場合はこちらの方が高速なことが多い。
+    for (const pixel of pixelsToDraw) {
+      const colorString = paletteRef.current[pixel.color] ?? "#000000";
+
+      // メインキャンバスとミニマップの両方を更新
+      mainCtx.fillStyle = colorString;
+      mainCtx.fillRect(pixel.x, pixel.y, 1, 1);
+      minimapCtx.fillStyle = colorString;
+      minimapCtx.fillRect(pixel.x, pixel.y, 1, 1);
+    }
+  }, [initialSnapshot.height, initialSnapshot.width]);
+
+  const drawAllCanvases = useCallback(() => {
+    drawDirtyPixels(); // Ensure any pending changes are drawn first
     if (canvasRef.current) {
       drawSnapshotToCanvas(
         canvasRef.current,
         pixelsRef.current,
         initialSnapshot.width,
         initialSnapshot.height,
-        paletteRef.current,
+        parsedPaletteRef.current,
       );
     }
 
@@ -182,15 +228,27 @@ export function CanvasEditor({
         pixelsRef.current,
         initialSnapshot.width,
         initialSnapshot.height,
-        paletteRef.current,
+        parsedPaletteRef.current,
       );
     }
-  }
+  }, [drawDirtyPixels, initialSnapshot.height, initialSnapshot.width]);
 
-  function updateViewportFrameForState(
+  const requestRedraw = useCallback(() => {
+    if (redrawQueuedRef.current) {
+      return;
+    }
+    redrawQueuedRef.current = true;
+    console.log("[Canvas] Redraw requested.");
+    requestAnimationFrame(() => {
+      drawDirtyPixels();
+      redrawQueuedRef.current = false;
+    });
+  }, [drawDirtyPixels]);
+
+  const updateViewportFrameForState = useCallback((
     nextZoom = zoomRef.current,
     nextPan = panRef.current,
-  ) {
+  ) => {
     const stage = stageRef.current;
 
     if (!stage) {
@@ -232,7 +290,7 @@ export function CanvasEditor({
       width: ((visibleRight - visibleLeft) / initialSnapshot.width) * 100,
       height: ((visibleBottom - visibleTop) / initialSnapshot.height) * 100,
     });
-  }
+  }, [initialSnapshot.height, initialSnapshot.width]);
 
   function centerOnContentPosition(contentX: number, contentY: number) {
     const nextZoom = zoomRef.current;
@@ -248,7 +306,7 @@ export function CanvasEditor({
 
   useEffect(() => {
     drawAllCanvases();
-  }, [initialSnapshot.height, initialSnapshot.width]);
+  }, [drawAllCanvases]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -364,63 +422,58 @@ export function CanvasEditor({
     setConnectionState("connecting");
     setStatusMessage("キャンバスに接続しています。");
 
-    const handleMessage = (event: MessageEvent<string>) => {
-      let message: CanvasRealtimeMessage;
+    socket.addEventListener("open", () => {
+      setConnectionState("open");
+      setStatusMessage("リアルタイム編集が有効です。");
+    });
 
+    const handleSocketMessage = (event: MessageEvent<string>) => {
+      console.log("[WS] Received message:", event.data);
+
+      let message;
       try {
-        message = JSON.parse(event.data) as CanvasRealtimeMessage;
-      } catch {
-        setStatusMessage("不明なメッセージを受信しました。");
+        message = JSON.parse(event.data);
+      } catch (e) {
+        console.error("Failed to parse JSON:", e);
+        return;
+      }
+
+      if (!message?.type) {
         return;
       }
 
       if (message.type === "canvas:snapshot") {
         pixelsRef.current = decodeBase64Pixels(message.pixels);
         paletteRef.current = message.palette;
+        dirtyPixelsRef.current = []; // Clear pending changes
+        parsedPaletteRef.current = message.palette.map((color: string) => [
+          Number.parseInt(color.slice(1, 3), 16),
+          Number.parseInt(color.slice(3, 5), 16),
+          Number.parseInt(color.slice(5, 7), 16),
+        ]);
         setPalette(message.palette);
         drawAllCanvases();
         updateViewportFrameForState();
-
         setStatusMessage(`${wallName ?? "キャンバス"} と同期しました。`);
-        return;
-      }
-
-      if (message.type === "pixel:applied") {
-        const index = message.y * initialSnapshot.width + message.x;
-        pixelsRef.current[index] = message.color;
-
-        if (canvasRef.current) {
-          drawPixel(
-            canvasRef.current,
-            message.x,
-            message.y,
-            message.color,
-            paletteRef.current,
-          );
+      } else if (message.type === "pixel:applied") {
+        const { x, y, color } = message;
+        const index = y * initialSnapshot.width + x;
+        if (index >= 0 && index < pixelsRef.current.length) {
+          pixelsRef.current[index] = color;
         }
-
-        if (minimapCanvasRef.current) {
-          drawPixel(
-            minimapCanvasRef.current,
-            message.x,
-            message.y,
-            message.color,
-            paletteRef.current,
-          );
+        dirtyPixelsRef.current.push({ x, y, color });
+        requestRedraw();
+      } else if (message.type === "pixels:applied") {
+        for (const pixel of message.pixels) {
+          const index = pixel.y * initialSnapshot.width + pixel.x;
+          if (index >= 0 && index < pixelsRef.current.length) {
+            pixelsRef.current[index] = pixel.color;
+          }
+          dirtyPixelsRef.current.push(pixel);
         }
-
-        return;
+        requestRedraw();
       }
-
-      setStatusMessage(message.message);
     };
-
-    socket.addEventListener("open", () => {
-      setConnectionState("open");
-      setStatusMessage("リアルタイム編集が有効です。");
-    });
-
-    socket.addEventListener("message", handleMessage);
 
     socket.addEventListener("close", () => {
       setConnectionState("closed");
@@ -434,22 +487,28 @@ export function CanvasEditor({
       setStatusMessage("WebSocket 接続に失敗しました。");
     });
 
+    socket.onmessage = handleSocketMessage;
+
     return () => {
-      socket.removeEventListener("message", handleMessage);
+      socket.onmessage = null;
       socket.close();
       socketRef.current = null;
     };
   }, [
     initialSnapshot.canvasId,
-    initialSnapshot.height,
-    initialSnapshot.width,
-    wallName,
     wsBase,
+    initialSnapshot.width,
+    drawAllCanvases,
+    requestRedraw,
+    setPalette,
+    setStatusMessage,
+    updateViewportFrameForState,
+    wallName,
   ]);
 
   useEffect(() => {
     updateViewportFrameForState(zoom, pan);
-  }, [pan, zoom, initialSnapshot.height, initialSnapshot.width]);
+  }, [pan, zoom]);
 
   function getPixelPosition(event: ReactPointerEvent<HTMLCanvasElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -466,50 +525,52 @@ export function CanvasEditor({
     };
   }
 
-  function paintPixel(x: number, y: number) {
+  // この関数は、ローカルでの描画とデータモデルの更新のみを担当します。
+  // WebSocketメッセージの送信は行いません。
+  function applyPixelLocally(x: number, y: number, color: number) {
     if (
-      socketRef.current?.readyState !== WebSocket.OPEN ||
       !canvasRef.current
     ) {
       return;
     }
 
     const index = y * initialSnapshot.width + x;
-
-    if (pixelsRef.current[index] === selectedColor) {
+    if (pixelsRef.current[index] === color) {
       return;
     }
 
-    pixelsRef.current[index] = selectedColor;
-    drawPixel(canvasRef.current, x, y, selectedColor, paletteRef.current);
-
-    if (minimapCanvasRef.current) {
-      drawPixel(
-        minimapCanvasRef.current,
-        x,
-        y,
-        selectedColor,
-        paletteRef.current,
-      );
-    }
-
-    socketRef.current.send(
-      JSON.stringify({
-        type: "pixel:set",
-        canvasId: initialSnapshot.canvasId,
-        x,
-        y,
-        color: selectedColor,
-      }),
-    );
+    pixelsRef.current[index] = color;
+    dirtyPixelsRef.current.push({ x, y, color });
+    requestRedraw();
   }
 
   function paintStroke(
     from: { x: number; y: number },
     to: { x: number; y: number },
   ) {
-    for (const pixel of getLinePixels(from, to)) {
-      paintPixel(pixel.x, pixel.y);
+    if (socketRef.current?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const pixelsToPaint = getLinePixels(from, to);
+    const pixelsForMessage: Array<{ x: number; y: number; color: number }> = [];
+
+    for (const pixel of pixelsToPaint) {
+      const index = pixel.y * initialSnapshot.width + pixel.x;
+      if (pixelsRef.current[index] !== selectedColor) {
+        applyPixelLocally(pixel.x, pixel.y, selectedColor);
+        pixelsForMessage.push({ ...pixel, color: selectedColor });
+      }
+    }
+
+    if (pixelsForMessage.length > 0) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: "pixels:set", // 複数のピクセルを一度に送信
+          canvasId: initialSnapshot.canvasId,
+          pixels: pixelsForMessage,
+        }),
+      );
     }
   }
 
