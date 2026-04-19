@@ -16,6 +16,7 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
   const containerRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [errorMsg, setErrorMsg] = useState('');
+  const [aframeReady, setAframeReady] = useState(false); 
 
   const mindUrlRef = useRef('');
   const startedRef = useRef(false);
@@ -107,11 +108,23 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
   return (
     <>
-      <Script
-        src="/mindar-image-aframe.prod.js"
+          <Script
+        src="https://cdn.jsdelivr.net/gh/aframevr/aframe@v1.4.0/dist/aframe.min.js"
         strategy="afterInteractive"
-        onLoad={startAR}
+        onLoad={() => setAframeReady(true)}
       />
+      <Script
+        src="https://aframe.io/releases/1.5.0/aframe.min.js"
+        strategy="afterInteractive"
+        onLoad={() => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';
+          s.onload = startAR;
+          document.head.appendChild(s);
+        }}
+      />
+
+
 
       <div style={{ position: 'fixed', inset: 0, background: 'black', zIndex: 10 }}>
         <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
