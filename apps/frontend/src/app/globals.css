@@ -670,7 +670,6 @@ img {
   gap: 16px;
   min-height: 0;
   padding: 20px;
-  border-radius: 24px;
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -685,7 +684,6 @@ img {
   min-width: 0;
   min-height: 0;
   padding: 14px;
-  border-radius: 26px;
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -694,35 +692,45 @@ img {
 .palette-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .palette-swatch {
   position: relative;
   min-height: 48px;
-  border-radius: 16px;
-  border: 2px solid transparent;
+  border: 0;
   cursor: pointer;
   box-shadow: inset 0 0 0 1px rgba(31, 26, 20, 0.12);
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
-.palette-swatch span {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  min-width: 20px;
-  min-height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--ink);
-  font-size: 0.78rem;
-  font-weight: 700;
+.palette-swatch--transparent,
+.canvas-selected-color__swatch.is-transparent {
+  background:
+    linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 44%,
+      rgba(180, 35, 24, 0.92) 44%,
+      rgba(180, 35, 24, 0.92) 56%,
+      transparent 56%,
+      transparent 100%
+    ),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(238, 229, 214, 0.98));
+}
+
+.palette-swatch:hover,
+.palette-swatch:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(31, 26, 20, 0.64);
+  outline: none;
 }
 
 .palette-swatch.is-selected {
-  border-color: var(--accent-strong);
-  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 2px var(--accent-strong);
 }
 
 .segmented-control {
@@ -761,7 +769,6 @@ img {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 14px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.72);
   color: var(--muted);
@@ -771,21 +778,38 @@ img {
   color: var(--ink);
 }
 
-.canvas-selected-color i {
+.canvas-selected-color__swatch {
+  position: relative;
   width: 28px;
   height: 28px;
-  border-radius: 10px;
   border: 1px solid rgba(31, 26, 20, 0.14);
+  background: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+
+.canvas-editor .page-kicker,
+.canvas-editor .step-badge,
+.canvas-editor .tag,
+.canvas-editor .button,
+.canvas-panel,
+.canvas-stage-shell,
+.palette-grid,
+.palette-swatch,
+.canvas-selected-color,
+.canvas-selected-color__swatch,
+.canvas-stage,
+.canvas-stage__surface,
+.canvas-minimap,
+.canvas-minimap__viewport,
+.canvas-info-row {
+  border-radius: 0;
 }
 
 .canvas-stage {
   position: relative;
-  display: grid;
-  place-items: center;
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  border-radius: 22px;
   border: 1px solid rgba(31, 26, 20, 0.08);
   background:
     radial-gradient(circle at top left, rgba(255, 211, 144, 0.24), transparent 34%),
@@ -823,10 +847,9 @@ img {
 }
 
 .canvas-stage__surface {
-  position: relative;
+  position: absolute;
   display: block;
   flex: none;
-  border-radius: 16px;
   overflow: hidden;
   background: #fff8f0;
   box-shadow: 0 28px 60px rgba(50, 33, 15, 0.16);
@@ -881,12 +904,19 @@ img {
 .canvas-minimap {
   position: relative;
   overflow: hidden;
-  border-radius: 18px;
   border: 1px solid var(--line);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(245, 236, 220, 0.94)),
     #fff8f0;
-  cursor: pointer;
+  cursor: default;
+}
+
+.canvas-minimap.is-active {
+  cursor: grab;
+}
+
+.canvas-minimap.is-active:active {
+  cursor: grabbing;
 }
 
 .canvas-minimap__reference {
@@ -930,7 +960,6 @@ img {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 14px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.72);
 }

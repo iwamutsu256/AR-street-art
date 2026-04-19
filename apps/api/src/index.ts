@@ -6,10 +6,10 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
 import {
-  CANVAS_COLOR_COUNT,
   CANVAS_MAX_SIZE,
   DEFAULT_PALETTE_COLORS,
   DEFAULT_PALETTE_VERSION,
+  normalizePixelValue,
   type CanvasSnapshot,
   type PixelAppliedMessage,
 } from '@street-art/shared';
@@ -68,6 +68,23 @@ function createCanvasMeta(row: {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   } satisfies CanvasMeta;
+}
+
+function sanitizePixelBuffer(pixels: Buffer, paletteLength: number) {
+  let sanitizedPixels: Buffer | null = null;
+
+  for (let index = 0; index < pixels.length; index += 1) {
+    const normalized = normalizePixelValue(pixels[index] ?? 0, paletteLength);
+
+    if (normalized === pixels[index]) {
+      continue;
+    }
+
+    sanitizedPixels ??= Buffer.from(pixels);
+    sanitizedPixels[index] = normalized;
+  }
+
+  return sanitizedPixels ?? pixels;
 }
 
 function parseCornerCoordinates(value: unknown) {
@@ -219,7 +236,16 @@ async function getCanvasSnapshot(canvasId: string) {
   }
 
   const palette = await getPaletteColors(state.meta.paletteVersion);
-  return buildCanvasSnapshot(state.meta, state.pixels, palette);
+  const pixels = sanitizePixelBuffer(state.pixels, palette.length);
+
+  if (pixels !== state.pixels) {
+    await Promise.all([
+      redis.set(getCanvasPixelsKey(canvasId), pixels),
+      redis.sadd(DIRTY_CANVAS_SET_KEY, canvasId),
+    ]);
+  }
+
+  return buildCanvasSnapshot(state.meta, pixels, palette);
 }
 
 async function flushDirtyCanvases() {
@@ -661,7 +687,7 @@ const pixelSetSchema = z.object({
   canvasId: z.string().min(1),
   x: z.number().int().min(0),
   y: z.number().int().min(0),
-  color: z.number().int().min(0).max(CANVAS_COLOR_COUNT - 1),
+  color: z.number().int().min(0),
 });
 
 const pixelsSetSchema = z.object({
@@ -671,7 +697,7 @@ const pixelsSetSchema = z.object({
     z.object({
       x: z.number().int().min(0),
       y: z.number().int().min(0),
-      color: z.number().int().min(0).max(CANVAS_COLOR_COUNT - 1),
+      color: z.number().int().min(0),
     })
   ).min(1).max(500), // 一度に送信できるピクセル数に上限を設定
 });
@@ -721,7 +747,7 @@ export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMes
         return;
       }
 
-      const { canvasId: incomingCanvasId, x, y, color } = parsedMessage.data;
+      const { canvasId: incomingCanvasId, x, y, color: requestedColor } = parsedMessage.data;
       if (incomingCanvasId !== canvasId) {
         sendWebSocketMessage(ws, { type: 'error', message: 'canvasId does not match the connected canvas' });
         return;
@@ -732,6 +758,8 @@ export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMes
         return;
       }
 
+      const palette = await getPaletteColors(meta.paletteVersion);
+      const color = normalizePixelValue(requestedColor, palette.length);
       await ensureRedisReady();
       const updatedAt = new Date().toISOString();
       const offset = y * meta.width + x;
@@ -760,7 +788,13 @@ export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMes
         return;
       }
 
-      const validPixels = pixels.filter(p => p.x < meta.width && p.y < meta.height);
+      const palette = await getPaletteColors(meta.paletteVersion);
+      const validPixels = pixels
+        .filter(p => p.x < meta.width && p.y < meta.height)
+        .map((p) => ({
+          ...p,
+          color: normalizePixelValue(p.color, palette.length),
+        }));
       if (validPixels.length === 0) {
         return; // 更新するピクセルがない
       }
@@ -824,7 +858,16 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     (ws as any).canvasMeta = state.meta;
 
     const palette = await getPaletteColors(state.meta.paletteVersion);
-    const snapshot = buildCanvasSnapshot(state.meta, state.pixels, palette);
+    const pixels = sanitizePixelBuffer(state.pixels, palette.length);
+
+    if (pixels !== state.pixels) {
+      await Promise.all([
+        redis.set(getCanvasPixelsKey(canvasId), pixels),
+        redis.sadd(DIRTY_CANVAS_SET_KEY, canvasId),
+      ]);
+    }
+
+    const snapshot = buildCanvasSnapshot(state.meta, pixels, palette);
     sendWebSocketMessage(ws, snapshot);
   })().catch(err => console.error(`[WS] Error during connection init for ${canvasId}:`, err));
 
