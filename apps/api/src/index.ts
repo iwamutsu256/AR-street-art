@@ -23,9 +23,6 @@ import { uploadWallImagesToR2 } from './lib/s3.js';
 
 const app = new Hono();
 
-// Pub/Sub用に別のRedisクライアントを複製
-const subscriber = redis.duplicate();
-
 app.use('*', cors({ origin: env.appOrigin, credentials: true }));
 
 const CANVAS_FLUSH_INTERVAL_MS = 5_000;
@@ -111,6 +108,48 @@ export async function ensureRedisReady() {
   }
 }
 
+export async function getCanvasMeta(canvasId: string): Promise<CanvasMeta | null> {
+  await ensureRedisReady();
+
+  const cachedMetaRecord = await redis.hgetall(getCanvasMetaKey(canvasId));
+  const cachedMeta = parseCanvasMeta(cachedMetaRecord);
+  if (cachedMeta) {
+    return cachedMeta;
+  }
+
+  const [canvasRow] = await db
+    .select({
+      id: canvases.id,
+      wallId: canvases.wallId,
+      width: canvases.width,
+      height: canvases.height,
+      paletteVersion: canvases.paletteVersion,
+      createdAt: canvases.createdAt,
+      updatedAt: canvases.updatedAt,
+    })
+    .from(canvases)
+    .where(eq(canvases.id, canvasId))
+    .limit(1);
+
+  if (!canvasRow) {
+    return null;
+  }
+
+  const meta = createCanvasMeta(canvasRow);
+
+  await redis.hset(getCanvasMetaKey(canvasId), {
+    id: meta.id,
+    wallId: meta.wallId,
+    width: String(meta.width),
+    height: String(meta.height),
+    paletteVersion: meta.paletteVersion,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+  });
+
+  return meta;
+}
+
 async function getPaletteColors(version: string) {
   const [paletteRow] = await db
     .select({ colors: palettes.colors })
@@ -124,54 +163,35 @@ async function getPaletteColors(version: string) {
 export async function getCanvasState(canvasId: string) {
   await ensureRedisReady();
 
-  const [cachedMetaRecord, cachedPixels] = await Promise.all([
-    redis.hgetall(getCanvasMetaKey(canvasId)),
-    redis.getBuffer(getCanvasPixelsKey(canvasId)),
-  ]);
-
-  const cachedMeta = parseCanvasMeta(cachedMetaRecord);
-
-  if (cachedMeta && cachedPixels) {
-    return { meta: cachedMeta, pixels: Buffer.from(cachedPixels) };
+  const meta = await getCanvasMeta(canvasId);
+  if (!meta) {
+    return null;
   }
 
+  let pixels = await redis.getBuffer(getCanvasPixelsKey(canvasId));
+
+  if (pixels) {
+    return { meta, pixels };
+  }
+
+  // ピクセルデータがRedisにない場合、DBから取得してキャッシュする
   const [canvasRow] = await db
-    .select({
-      id: canvases.id,
-      wallId: canvases.wallId,
-      width: canvases.width,
-      height: canvases.height,
-      paletteVersion: canvases.paletteVersion,
-      pixelData: canvases.pixelData,
-      createdAt: canvases.createdAt,
-      updatedAt: canvases.updatedAt,
-    })
+    .select({ pixelData: canvases.pixelData })
     .from(canvases)
     .where(eq(canvases.id, canvasId))
     .limit(1);
 
+  // メタデータはあるがピクセルデータがない、という状況は通常起こりにくいが、念のためハンドリング
   if (!canvasRow) {
     return null;
   }
 
-  const pixels =
-    canvasRow.pixelData && canvasRow.pixelData.length === canvasRow.width * canvasRow.height
+  pixels =
+    canvasRow.pixelData && canvasRow.pixelData.length === meta.width * meta.height
       ? Buffer.from(canvasRow.pixelData)
-      : createBlankPixelData(canvasRow.width, canvasRow.height);
-  const meta = createCanvasMeta(canvasRow);
+      : createBlankPixelData(meta.width, meta.height);
 
-  await Promise.all([
-    redis.set(getCanvasPixelsKey(canvasId), pixels),
-    redis.hset(getCanvasMetaKey(canvasId), {
-      id: meta.id,
-      wallId: meta.wallId,
-      width: String(meta.width),
-      height: String(meta.height),
-      paletteVersion: meta.paletteVersion,
-      createdAt: meta.createdAt,
-      updatedAt: meta.updatedAt,
-    }),
-  ]);
+  await redis.set(getCanvasPixelsKey(canvasId), pixels);
 
   return { meta, pixels };
 }
@@ -617,23 +637,24 @@ const server = serve(
 const wss = new WebSocketServer({ server: server as Server });
 const canvasConnections = new Map<string, Set<WebSocket>>();
 
-subscriber.on('message', (channel, message) => {
-  // channelの形式は 'canvas:<canvasId>:updates'
-  const canvasId = channel.split(':')[1];
-  if (!canvasId) {
-    return;
-  }
-
+function broadcastToCanvasClients(canvasId: string, message: string) {
   const connections = canvasConnections.get(canvasId);
   if (connections) {
-    // Redisから受け取ったメッセージを、このインスタンスに接続している全クライアントにブロードキャスト
+    console.log(`[WS] Broadcasting to ${connections.size} client(s) on canvas ${canvasId}: ${message}`);
     connections.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
+        try {
+          client.send(message);
+        } catch (error) {
+          // 一部のクライアントへの送信に失敗しても、他のクライアントへの送信を続ける
+          console.error(`[WS] Failed to send message to a client on canvas ${canvasId}:`, error);
+        }
       }
     });
+  } else {
+    console.log(`[WS] No clients to broadcast to on canvas ${canvasId}.`);
   }
-});
+}
 
 const pixelSetSchema = z.object({
   type: z.literal('pixel:set'),
@@ -652,7 +673,7 @@ const pixelsSetSchema = z.object({
       y: z.number().int().min(0),
       color: z.number().int().min(0).max(CANVAS_COLOR_COUNT - 1),
     })
-  ).min(1).max(100), // 一度に送信できるピクセル数に上限を設定
+  ).min(1).max(500), // 一度に送信できるピクセル数に上限を設定
 });
 
 function sendWebSocketMessage(ws: WebSocket, payload: unknown) {
@@ -675,6 +696,21 @@ async function broadcastCanvasSnapshot(ws: WebSocket, canvasId: string) {
 
 export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMessage: string) {
   try {
+    // メタデータを取得。WebSocketセッションでキャッシュされているか、Redisキャッシュから取得
+    let meta = (ws as any).canvasMeta as CanvasMeta | undefined;
+    if (!meta || meta.id !== canvasId) {
+      const newMeta = await getCanvasMeta(canvasId);
+      if (newMeta) {
+        (ws as any).canvasMeta = newMeta;
+        meta = newMeta;
+      }
+    }
+
+    if (!meta) {
+      sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
+      return;
+    }
+
     const parsedJson = JSON.parse(rawMessage);
     const messageType = parsedJson?.type;
 
@@ -691,22 +727,15 @@ export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMes
         return;
       }
 
-      const state = await getCanvasState(canvasId);
-      if (!state) {
-        sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
-        return;
-      }
-
-      if (x >= state.meta.width || y >= state.meta.height) {
+      if (x >= meta.width || y >= meta.height) {
         sendWebSocketMessage(ws, { type: 'error', message: 'Pixel coordinates out of bounds' });
         return;
       }
 
       await ensureRedisReady();
       const updatedAt = new Date().toISOString();
-      const offset = y * state.meta.width + x;
+      const offset = y * meta.width + x;
 
-      // 複数のRedisコマンドをpipelineでまとめて実行し、ネットワークラウンドトリップを削減
       await redis
         .multi()
         .setrange(getCanvasPixelsKey(canvasId), offset, String.fromCharCode(color))
@@ -714,9 +743,9 @@ export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMes
         .sadd(DIRTY_CANVAS_SET_KEY, canvasId)
         .exec();
 
-      const broadcastMessage: PixelAppliedMessage = { type: 'pixel:applied', canvasId, x, y, color };
-      const encodedMessage = JSON.stringify(broadcastMessage);
-      await redis.publish(`canvas:${canvasId}:updates`, encodedMessage);
+      const broadcastPayload: PixelAppliedMessage = { type: 'pixel:applied', canvasId, x, y, color };
+      const encodedPayload = JSON.stringify(broadcastPayload);
+      broadcastToCanvasClients(canvasId, encodedPayload);
 
     } else if (messageType === 'pixels:set') {
       const parsedMessage = pixelsSetSchema.safeParse(parsedJson);
@@ -731,13 +760,7 @@ export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMes
         return;
       }
 
-      const state = await getCanvasState(canvasId);
-      if (!state) {
-        sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
-        return;
-      }
-
-      const validPixels = pixels.filter(p => p.x < state.meta.width && p.y < state.meta.height);
+      const validPixels = pixels.filter(p => p.x < meta.width && p.y < meta.height);
       if (validPixels.length === 0) {
         return; // 更新するピクセルがない
       }
@@ -747,23 +770,23 @@ export async function handleCanvasUpdate(ws: WebSocket, canvasId: string, rawMes
       const multi = redis.multi();
 
       for (const pixel of validPixels) {
-        const offset = pixel.y * state.meta.width + pixel.x;
+        const offset = pixel.y * meta.width + pixel.x;
+        // pixel:set と同じ setrange を使用して一貫性を保ち、堅牢性を高める
         multi.setrange(getCanvasPixelsKey(canvasId), offset, String.fromCharCode(pixel.color));
       }
+
       multi.hset(getCanvasMetaKey(canvasId), 'updatedAt', updatedAt);
       multi.sadd(DIRTY_CANVAS_SET_KEY, canvasId);
-
       await multi.exec();
 
       // `PixelsAppliedMessage` に相当するオブジェクトを作成
-      const broadcastMessage = {
+      const broadcastPayload = {
         type: 'pixels:applied',
         canvasId,
         pixels: validPixels,
       };
-      const encodedMessage = JSON.stringify(broadcastMessage);
-      await redis.publish(`canvas:${canvasId}:updates`, encodedMessage);
-
+      const encodedPayload = JSON.stringify(broadcastPayload);
+      broadcastToCanvasClients(canvasId, encodedPayload);
     } else {
       sendWebSocketMessage(ws, { type: 'error', message: `unknown message type: ${messageType}` });
     }
@@ -783,25 +806,27 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   }
 
   const canvasId = pathSegments[2];
-  const channelName = `canvas:${canvasId}:updates`;
-
-  console.log(`[WS] Client connected to canvas: ${canvasId}`);
 
   if (!canvasConnections.has(canvasId)) {
     canvasConnections.set(canvasId, new Set());
-    // このサーバーインスタンスで最初の接続なので、
-    // 他のインスタンスからの更新を受け取るためにRedisチャンネルを購読する
-    subscriber.subscribe(channelName, (err) => {
-      if (err) {
-        console.error(`[WS] Failed to subscribe to Redis channel ${channelName}`, err);
-      } else {
-        console.log(`[WS] Subscribed to Redis channel: ${channelName}`);
-      }
-    });
   }
 
   canvasConnections.get(canvasId)?.add(ws);
-  void broadcastCanvasSnapshot(ws, canvasId);
+  console.log(`[WS] Client connected to canvas: ${canvasId}. Total connections for this canvas: ${canvasConnections.get(canvasId)?.size}`);
+  // 接続時にキャンバスのスナップショットを送信し、メタデータをキャッシュする
+  (async () => {
+    const state = await getCanvasState(canvasId);
+    if (!state) {
+      sendWebSocketMessage(ws, { type: 'error', message: 'Canvas not found' });
+      ws.close(1008, 'canvas not found');
+      return;
+    }
+    (ws as any).canvasMeta = state.meta;
+
+    const palette = await getPaletteColors(state.meta.paletteVersion);
+    const snapshot = buildCanvasSnapshot(state.meta, state.pixels, palette);
+    sendWebSocketMessage(ws, snapshot);
+  })().catch(err => console.error(`[WS] Error during connection init for ${canvasId}:`, err));
 
   ws.on('message', (message) => {
     // 単一または複数のピクセル更新を処理し、Redis経由でブロードキャストする
@@ -809,22 +834,13 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   });
 
   ws.on('close', () => {
-    console.log(`[WS] Client disconnected from canvas: ${canvasId}`);
     const connections = canvasConnections.get(canvasId);
     connections?.delete(ws);
 
     if (connections?.size === 0) {
       canvasConnections.delete(canvasId);
-      // このインスタンスで最後の接続が切断されたので、
-      // リソースを節約するためにRedisチャンネルの購読を解除する
-      subscriber.unsubscribe(channelName, (err) => {
-        if (err) {
-          console.error(`[WS] Failed to unsubscribe from Redis channel ${channelName}`, err);
-        } else {
-          console.log(`[WS] Unsubscribed from Redis channel: ${channelName}`);
-        }
-      });
     }
+    console.log(`[WS] Client disconnected from canvas: ${canvasId}. Total connections for this canvas: ${connections?.size ?? 0}`);
   });
 
   ws.on('error', (error) => {
@@ -844,15 +860,6 @@ async function shutdown() {
   isShuttingDown = true;
   clearInterval(canvasFlushInterval);
   await flushDirtyCanvases();
-
-  try {
-    // すべてのチャンネルの購読を解除し、subscriber接続を閉じる
-    await subscriber.unsubscribe();
-    await subscriber.quit();
-  } catch {
-    // quitが失敗した場合は強制的に切断
-    subscriber.disconnect();
-  }
 
   try {
     if (redis.status === 'ready' || redis.status === 'connect' || redis.status === 'wait') {
