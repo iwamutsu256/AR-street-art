@@ -108,21 +108,17 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
   return (
     <>
-          <Script
-        src="https://cdn.jsdelivr.net/gh/aframevr/aframe@v1.4.0/dist/aframe.min.js"
-        strategy="afterInteractive"
-        onLoad={() => setAframeReady(true)}
-      />
-      <Script
-        src="https://aframe.io/releases/1.5.0/aframe.min.js"
-        strategy="afterInteractive"
-        onLoad={() => {
-          const s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js';
-          s.onload = startAR;
-          document.head.appendChild(s);
-        }}
-      />
+<Script
+  src="https://aframe.io/releases/1.5.0/aframe.min.js"
+  strategy="afterInteractive"
+  onLoad={() => {
+    setAframeReady(true);  // ← ここに移動
+    const s = document.createElement('script');
+    s.src = '/mindar-image-aframe.prod.js';  //
+    s.onload = startAR;
+    document.head.appendChild(s);
+  }}
+/>
 
 
 
