@@ -39,7 +39,7 @@ scaffold 段階を越えて「壁登録からリアルタイム編集と AR prot
   - rectified 生成
   - キャンバスサイズ決定
   - 緯度 / 経度入力
-  - `LocationPicker` は MapLibre + MapTiler 対応だが、現在の page は空 key を渡しているため地図は非表示
+  - `LocationPicker` は `.env` の `NEXT_PUBLIC_MAPTILER_KEY` を使って MapLibre + MapTiler の地図を表示
 - 壁詳細画面
   - 画像プレビュー
   - キャンバス情報表示
@@ -140,7 +140,7 @@ scaffold 段階を越えて「壁登録からリアルタイム編集と AR prot
 - API reads R2 credentials from `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, optional `R2_ENDPOINT`
 - API currently reads `R2_IMAGE_URL` when constructing public `r2.dev` URLs
 - frontend reads `NEXT_PUBLIC_API_BASE`, `NEXT_PUBLIC_WS_BASE`, and `API_PROXY_TARGET`
-- `NEXT_PUBLIC_MAPTILER_KEY` exists in `.env.example`, but `/walls/new` currently passes an empty key to `LocationPicker`
+- frontend reads `NEXT_PUBLIC_MAPTILER_KEY` for the `/walls/new` location map
 
 ## Known Issues And Gaps
 
@@ -154,7 +154,6 @@ scaffold 段階を越えて「壁登録からリアルタイム編集と AR prot
 - palette 管理 UI
 - PNG 書き出し
 - 複数 API インスタンスを前提にした Redis pub/sub 同期
-- `/walls/new` での MapTiler key wiring
 - `NearbyWallBanner` links to `/walls/:id/ar`, while the implemented AR route is `/ar/:id`
 - AR rendering should be reviewed for palette value mapping and script loading before production use
 - Load-test scripts are not currently checked into the repository
@@ -184,10 +183,9 @@ scaffold 段階を越えて「壁登録からリアルタイム編集と AR prot
 
 ## Recommended Next Steps
 
-1. `/walls/new` に MapTiler key を渡す、または inactive な map path を一度外す
-2. 近傍壁バナーの AR link を `/ar/:id` に直す、または route alias を追加する
-3. AR の canvas snapshot rendering を `0 = transparent`, `1..palette.length` の color model に合わせて確認する
-4. WebSocket reconnect と user-visible recovery を追加する
-5. realtime を複数 API instance 対応に拡張する
-6. canvas color normalization、batch update、wall registration validation のテストを追加する
-7. 現在の `pixels:set` protocol 向けの k6 load-test script を追加する
+1. 近傍壁バナーの AR link を `/ar/:id` に直す、または route alias を追加する
+2. AR の canvas snapshot rendering を `0 = transparent`, `1..palette.length` の color model に合わせて確認する
+3. WebSocket reconnect と user-visible recovery を追加する
+4. realtime を複数 API instance 対応に拡張する
+5. canvas color normalization、batch update、wall registration validation のテストを追加する
+6. 現在の `pixels:set` protocol 向けの k6 load-test script を追加する

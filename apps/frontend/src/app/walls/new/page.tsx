@@ -8,6 +8,8 @@ export const metadata: Metadata = {
 };
 
 export default function NewWallPage() {
+  const mapTilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY ?? '';
+
   return (
     <main className="page-shell">
       <div className="page-header">
@@ -27,7 +29,7 @@ export default function NewWallPage() {
         </Link>
       </div>
 
-      <NewWallRegistrationForm mapTilerKey={''} />
+      <NewWallRegistrationForm mapTilerKey={mapTilerKey} />
     </main>
   );
 }
