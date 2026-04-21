@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { NewWallForm } from '../../../components/walls/NewWallForm';
+import { NewWallRegistrationForm } from '../../../components/walls/NewWallRegistrationForm';
 
 export const metadata: Metadata = {
   title: '新規壁登録 | Street Art App',
@@ -17,9 +17,8 @@ export default function NewWallPage() {
             新しい壁を登録
           </h1>
           <p className="section-copy" style={{ maxWidth: 760 }}>
-            画像の正規化はブラウザで行い、既存の <span className="mono">POST /api/walls</span> へ
-            multipart 送信します。App Router のページはサーバー側に置き、操作の多い UI はクライアント
-            コンポーネントに分離しています。
+            スキャン登録または画像アップロード登録を選び、範囲確認、画像補正、キャンバスサイズ、名称と位置を
+            画面ごとに進めます。
           </p>
         </div>
 
@@ -28,9 +27,7 @@ export default function NewWallPage() {
         </Link>
       </div>
 
-<NewWallForm mapTilerKey={''} />
-
-
+      <NewWallRegistrationForm mapTilerKey={''} />
     </main>
   );
 }

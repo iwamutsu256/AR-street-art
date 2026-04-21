@@ -10,11 +10,19 @@ type CornerEditorProps = {
   imageUrl: string;
   imageWidth: number;
   imageHeight: number;
+  imageAlt?: string;
   value: CornerCoordinate[];
   onChange: (corners: CornerCoordinate[]) => void;
 };
 
-export function CornerEditor({ imageUrl, imageWidth, imageHeight, value, onChange }: CornerEditorProps) {
+export function CornerEditor({
+  imageUrl,
+  imageWidth,
+  imageHeight,
+  imageAlt = '選択した壁画像',
+  value,
+  onChange,
+}: CornerEditorProps) {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const emitChange = useEffectEvent(onChange);
@@ -93,7 +101,7 @@ export function CornerEditor({ imageUrl, imageWidth, imageHeight, value, onChang
             ref={surfaceRef}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="editor-image" ref={imageRef} src={imageUrl} alt="アップロードした壁画像" />
+            <img className="editor-image" ref={imageRef} src={imageUrl} alt={imageAlt} />
             <svg
               className="editor-overlay"
               preserveAspectRatio="none"

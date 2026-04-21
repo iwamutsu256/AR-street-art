@@ -297,3 +297,32 @@ export async function buildRectifiedImageAsset(options: {
     aspectRatio: rectifiedCanvas.width / rectifiedCanvas.height,
   };
 }
+
+export async function buildAspectAdjustedRectifiedImageAsset(options: {
+  file: File;
+  aspectRatio: number;
+}): Promise<RectifiedImageAsset> {
+  const image = await loadImageFromFile(options.file);
+  const safeAspectRatio =
+    Number.isFinite(options.aspectRatio) && options.aspectRatio > 0
+      ? Math.min(Math.max(options.aspectRatio, 1 / 3), 3)
+      : image.naturalWidth / image.naturalHeight;
+  const targetLongEdge = Math.min(
+    RECTIFIED_MAX_LONG_EDGE,
+    Math.max(image.naturalWidth, image.naturalHeight)
+  );
+  const targetSize = getAspectRatioSize(safeAspectRatio, targetLongEdge);
+  const canvas = createCanvas(targetSize.width, targetSize.height);
+  const context = getContext2d(canvas);
+
+  context.drawImage(image, 0, 0, targetSize.width, targetSize.height);
+
+  const rectifiedImageFile = await canvasToJpegFile(canvas, 'rectified-adjusted.jpg', 0.88);
+
+  return {
+    rectifiedImageFile,
+    width: canvas.width,
+    height: canvas.height,
+    aspectRatio: canvas.width / canvas.height,
+  };
+}
