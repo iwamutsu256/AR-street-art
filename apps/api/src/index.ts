@@ -27,6 +27,7 @@ app.use('*', cors({ origin: env.appOrigin, credentials: true }));
 
 const CANVAS_FLUSH_INTERVAL_MS = 5_000;
 const DIRTY_CANVAS_SET_KEY = 'canvas:dirty';
+const canvasConnections = new Map<string, Set<WebSocket>>();
 
 type CanvasMeta = {
   id: string;
@@ -44,6 +45,16 @@ function getCanvasPixelsKey(canvasId: string) {
 
 function getCanvasMetaKey(canvasId: string) {
   return `canvas:${canvasId}:meta`;
+}
+
+function getCanvasConnectionCount(canvasId: string) {
+  const connections = canvasConnections.get(canvasId);
+
+  if (!connections) {
+    return 0;
+  }
+
+  return [...connections].filter((client) => client.readyState === WebSocket.OPEN).length;
 }
 
 function createBlankPixelData(width: number, height: number) {
@@ -390,7 +401,12 @@ app.get('/walls/:id', async (c) => {
     visibilityRadiusM: row.visibilityRadiusM,
     createdAt: row.createdAt,
     photoUrl: row.thumbnailImageUrl,
-    canvas: canvasRow ?? null,
+    canvas: canvasRow
+      ? {
+          ...canvasRow,
+          activeConnectionCount: getCanvasConnectionCount(canvasRow.id),
+        }
+      : null,
   };
   return c.json(responseData);
 });
@@ -549,7 +565,10 @@ app.post('/walls', async (c) => {
       {
         ...created.newWall,
         photoUrl: created.newWall.thumbnailImageUrl,
-        canvas: created.newCanvas,
+        canvas: {
+          ...created.newCanvas,
+          activeConnectionCount: 0,
+        },
         message: 'Wall created successfully',
       },
       201
@@ -661,7 +680,6 @@ const server = serve(
 );
 
 const wss = new WebSocketServer({ server: server as Server });
-const canvasConnections = new Map<string, Set<WebSocket>>();
 
 function broadcastToCanvasClients(canvasId: string, message: string) {
   const connections = canvasConnections.get(canvasId);

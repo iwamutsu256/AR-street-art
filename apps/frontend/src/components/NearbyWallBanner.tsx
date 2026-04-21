@@ -1,11 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useNearbyWalls } from '../hooks/useNearbyWalls';
 
 export default function NearbyWallBanner() {
+  const pathname = usePathname();
   const { nearbyWalls } = useNearbyWalls();
 
+  if (pathname === '/map') return null;
   if (nearbyWalls.length === 0) return null;
 
   const wall = nearbyWalls[0];
@@ -19,7 +22,7 @@ export default function NearbyWallBanner() {
       </span>
       <Link
         className="button button-primary"
-        href={`/walls/${wall.id}/ar`}
+        href={`/ar/${wall.id}`}
         style={{ fontSize: '0.88rem', minHeight: 36, padding: '0 14px', whiteSpace: 'nowrap' }}
       >
         AR で見る
