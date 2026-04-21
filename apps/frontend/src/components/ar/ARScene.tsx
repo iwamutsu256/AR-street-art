@@ -60,7 +60,7 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
       containerRef.current.innerHTML = `
         <a-scene
-          mindar-image="imageTargetSrc: #mind-target; autoStart: true; uiError: no; uiScanning: no; filterMinCF: 0.001; filterBeta: 0.001;"
+          mindar-image="imageTargetSrc: ${mindUrl}; autoStart: true; uiError: no; uiScanning: no; filterMinCF: 0.001; filterBeta: 0.001;"
           color-space="sRGB"
           renderer="colorManagement: true"
           vr-mode-ui="enabled: false"
@@ -68,7 +68,6 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
           style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:10;"
         >
           <a-assets>
-            <a-asset-item id="mind-target" src="${mindUrl}"></a-asset-item>
             <img id="artwork-tex" src="${artSrc}" crossorigin="anonymous" />
           </a-assets>
           <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -109,8 +108,10 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
             }
           }
           if (aScene.renderer) {
-
             aScene.renderer.setAnimationLoop(null);
+          }
+          if (aScene.destroy) {
+            aScene.destroy();
           }
         } catch (e) {
           console.warn('AR scene cleanup error:', e);
@@ -140,6 +141,11 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
         strategy="afterInteractive"
         onLoad={() => {
           setAframeReady(true);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((window as any).MINDAR) {
+            startAR();
+            return;
+          }
           const s = document.createElement('script');
           s.src = '/mindar-image-aframe.prod.js';
           s.onload = startAR;
