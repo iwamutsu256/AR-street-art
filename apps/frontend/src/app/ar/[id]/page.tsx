@@ -113,7 +113,7 @@ export default function WallARPage() {
     <div style={{ position: 'fixed', inset: 0, background: 'black', overflow: 'hidden', zIndex: 100 }}>
       <div style={{ position: 'fixed', top: 16, left: 16, zIndex: 110 }}>
         <button
-          onClick={() => router.push(`/walls/${wallId}`)}
+          onClick={() => { window.location.href = `/walls/${wallId}`; }}
           style={{
             padding: '8px 16px',
             background: 'rgba(0,0,0,0.62)',
