@@ -60,14 +60,15 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
       containerRef.current.innerHTML = `
         <a-scene
-          mindar-image="imageTargetSrc: ${mindUrl}; autoStart: true; uiError: no; uiScanning: no; filterMinCF: 0.001; filterBeta: 0.001;"
+          mindar-image="imageTargetSrc: #mind-target; autoStart: true; uiError: no; uiScanning: no; filterMinCF: 0.001; filterBeta: 0.001;"
           color-space="sRGB"
-          renderer="colorManagement: true; physicallyCorrectLights: true"
+          renderer="colorManagement: true"
           vr-mode-ui="enabled: false"
           device-orientation-permission-ui="enabled: false"
           style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:10;"
         >
           <a-assets>
+            <a-asset-item id="mind-target" src="${mindUrl}"></a-asset-item>
             <img id="artwork-tex" src="${artSrc}" crossorigin="anonymous" />
           </a-assets>
           <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
