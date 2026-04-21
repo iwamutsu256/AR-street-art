@@ -15,7 +15,7 @@
 
 ## Overview
 
-現在の AR は WebXR hit-test ではなく、A-Frame + MindAR image tracking による marker based AR です。
+現在の AR は、A-Frame + MindAR image tracking による marker based AR を採用しています。
 
 壁登録時に作られた rectified image を image target として使い、カメラ映像内で同じ壁画像を検出できたら、その target 平面上に canvas snapshot 由来の artwork image を重ねます。
 
@@ -67,7 +67,7 @@ AR page 本体は client component の `WallARPage` です。`ARScene` は brows
 現在の実装:
 
 ```ts
-const hex = snapshot.palette[bytes[i]] ?? '#000000';
+const hex = snapshot.palette[bytes[i]] ?? "#000000";
 imageData.data[i * 4] = parseInt(hex.slice(1, 3), 16);
 imageData.data[i * 4 + 1] = parseInt(hex.slice(3, 5), 16);
 imageData.data[i * 4 + 2] = parseInt(hex.slice(5, 7), 16);
@@ -189,9 +189,14 @@ AR page は fullscreen overlay なので実害は小さい想定ですが、clea
 - MindAR image tracking のため、rectified image は特徴点の多い画像ほど安定する
 - 単色に近い壁、反射、暗所、強いブレでは tracking が不安定になりやすい
 
+## Technology Requirements / Direction
+
+- 今回利用する AR 技術は A-Frame + MindAR image tracking
+- tracking target は壁登録時に作る rectified image
+- 将来 AR runtime の技術を変える場合は、A-Frame 依存部分を MindAR 側がアクティブに取り組んでいる Three.js 構成へ移行する方向で検討する
+
 ## Current Limitations
 
-- WebXR の plane detection / hit-test は使っていない
 - `.mind` file を保存していないため、AR page を開くたびに compile する
 - 1 scene 1 target のみ
 - AR 表示中に canvas の realtime update は反映されない
@@ -210,4 +215,5 @@ AR page は fullscreen overlay なので実害は小さい想定ですが、clea
 4. AR 表示中に最新 snapshot を再取得する、または WebSocket で artwork texture を更新する
 5. A-Frame / MindAR script loader を idempotent にする
 6. `/api/proxy-image` に allowlist、content-type、size、timeout の制限を追加する
-7. 実機で camera permission、tracking 安定性、透明 pixel、route 導線を確認する
+7. 将来 runtime を変える必要が出たら、A-Frame 依存部分の Three.js 移行を検討する
+8. 実機で camera permission、tracking 安定性、透明 pixel、route 導線を確認する
