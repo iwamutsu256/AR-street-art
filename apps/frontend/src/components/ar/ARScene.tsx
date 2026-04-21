@@ -97,30 +97,54 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
   useEffect(() => {
     return () => {
-      if (mindUrlRef.current) URL.revokeObjectURL(mindUrlRef.current);
-      const video = document.querySelector('video');
-      if (video?.srcObject) {
-        (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      const aScene = containerRef.current?.querySelector('a-scene') as any;
+      if (aScene) {
+        try {
+          const mindarSystem = aScene.systems?.['mindar-image-system'] as any;
+          if (mindarSystem) {
+            mindarSystem._resize = () => {};
+            if (mindarSystem.controller) {
+              mindarSystem.controller.stopProcessVideo?.();
+            }
+          }
+          if (aScene.renderer) {
+
+            aScene.renderer.setAnimationLoop(null);
+          }
+        } catch (e) {
+          console.warn('AR scene cleanup error:', e);
+        }
       }
+
+      document.querySelectorAll('video').forEach((video) => {
+        if (video.srcObject) {
+          (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+          video.srcObject = null;
+        }
+      });
+
+      document.documentElement.classList.remove('a-fullscreen');
+      document.body.style.removeProperty('overflow');
+      document.body.style.removeProperty('height');
+
+      if (mindUrlRef.current) URL.revokeObjectURL(mindUrlRef.current);
       if (containerRef.current) containerRef.current.innerHTML = '';
     };
   }, []);
 
   return (
     <>
-<Script
-  src="https://aframe.io/releases/1.5.0/aframe.min.js"
-  strategy="afterInteractive"
-  onLoad={() => {
-    setAframeReady(true);  // ← ここに移動
-    const s = document.createElement('script');
-    s.src = '/mindar-image-aframe.prod.js';  //
-    s.onload = startAR;
-    document.head.appendChild(s);
-  }}
-/>
-
-
+      <Script
+        src="https://aframe.io/releases/1.5.0/aframe.min.js"
+        strategy="afterInteractive"
+        onLoad={() => {
+          setAframeReady(true);
+          const s = document.createElement('script');
+          s.src = '/mindar-image-aframe.prod.js';
+          s.onload = startAR;
+          document.head.appendChild(s);
+        }}
+      />
 
       <div style={{ position: 'fixed', inset: 0, background: 'black', zIndex: 10 }}>
         <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
