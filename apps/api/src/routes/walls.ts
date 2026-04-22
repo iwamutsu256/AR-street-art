@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { CANVAS_MAX_SIZE, DEFAULT_PALETTE_VERSION } from '@street-art/shared';
 import { asc, eq } from 'drizzle-orm';
-import type { Hono } from 'hono';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import { createBlankPixelData } from '../canvas/service.js';
 import { canvases, walls } from '../db/schema.js';
@@ -68,209 +68,209 @@ function isUploadedFile(input: unknown): input is File {
   return typeof input === 'object' && input !== null && 'arrayBuffer' in input && 'type' in input;
 }
 
-export function registerWallRoutes(app: Hono) {
-  /**
-   * 壁一覧を返す
-   */
-  app.get('/walls', async (c) => {
-    // `select()`で全カラムを取得すると、`jsonb`型の`cornerCoordinates`の処理で問題が発生する可能性があるため、
-    // レスポンスに必要なカラムのみを明示的に指定して取得します。
-    const allWalls = await db
+export const wallsApp = new Hono();
+
+/**
+ * 壁一覧を返す
+ */
+wallsApp.get('/', async (c) => {
+  // `select()`で全カラムを取得すると、`jsonb`型の`cornerCoordinates`の処理で問題が発生する可能性があるため、
+  // レスポンスに必要なカラムのみを明示的に指定して取得します。
+  const allWalls = await db
+    .select({
+      id: walls.id,
+      name: walls.name,
+      latitude: walls.latitude,
+      longitude: walls.longitude,
+      thumbnailImageUrl: walls.thumbnailImageUrl,
+    })
+    .from(walls)
+    .orderBy(asc(walls.createdAt));
+
+  const result = allWalls.map((wall) => ({
+    id: wall.id,
+    name: wall.name,
+    latitude: wall.latitude,
+    longitude: wall.longitude,
+    photoUrl: wall.thumbnailImageUrl,
+  }));
+
+  return c.json(result);
+});
+
+/**
+ * 指定された壁を返す
+ */
+wallsApp.get('/:id', async (c) => {
+  const id = c.req.param('id');
+  const [[row] = [], [canvasRow] = []] = await Promise.all([
+    db
       .select({
         id: walls.id,
         name: walls.name,
         latitude: walls.latitude,
         longitude: walls.longitude,
+        originalImageUrl: walls.originalImageUrl,
         thumbnailImageUrl: walls.thumbnailImageUrl,
+        rectifiedImageUrl: walls.rectifiedImageUrl,
+        cornerCoordinates: walls.cornerCoordinates,
+        approxHeading: walls.approxHeading,
+        visibilityRadiusM: walls.visibilityRadiusM,
+        createdAt: walls.createdAt,
       })
       .from(walls)
-      .orderBy(asc(walls.createdAt));
+      .where(eq(walls.id, id))
+      .limit(1),
+    db
+      .select({
+        id: canvases.id,
+        width: canvases.width,
+        height: canvases.height,
+        paletteVersion: canvases.paletteVersion,
+      })
+      .from(canvases)
+      .where(eq(canvases.wallId, id))
+      .orderBy(asc(canvases.createdAt))
+      .limit(1),
+  ]);
 
-    const result = allWalls.map((wall) => ({
-      id: wall.id,
-      name: wall.name,
-      latitude: wall.latitude,
-      longitude: wall.longitude,
-      photoUrl: wall.thumbnailImageUrl,
-    }));
+  if (!row) {
+    return c.json({ message: 'Wall not found' }, 404);
+  }
 
-    return c.json(result);
-  });
+  const responseData = {
+    id: row.id,
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    originalImageUrl: row.originalImageUrl,
+    thumbnailImageUrl: row.thumbnailImageUrl,
+    rectifiedImageUrl: row.rectifiedImageUrl,
+    cornerCoordinates: parseCornerCoordinates(row.cornerCoordinates),
+    approxHeading: row.approxHeading,
+    visibilityRadiusM: row.visibilityRadiusM,
+    createdAt: row.createdAt,
+    photoUrl: row.thumbnailImageUrl,
+    canvas: canvasRow ?? null,
+  };
+  return c.json(responseData);
+});
 
-  /**
-   * 指定された壁を返す
-   */
-  app.get('/walls/:id', async (c) => {
-    const id = c.req.param('id');
-    const [[row] = [], [canvasRow] = []] = await Promise.all([
-      db
-        .select({
-          id: walls.id,
-          name: walls.name,
-          latitude: walls.latitude,
-          longitude: walls.longitude,
-          originalImageUrl: walls.originalImageUrl,
-          thumbnailImageUrl: walls.thumbnailImageUrl,
-          rectifiedImageUrl: walls.rectifiedImageUrl,
-          cornerCoordinates: walls.cornerCoordinates,
-          approxHeading: walls.approxHeading,
-          visibilityRadiusM: walls.visibilityRadiusM,
-          createdAt: walls.createdAt,
+/**
+ * 壁を登録する
+ */
+wallsApp.post('/', async (c) => {
+  const body = await c.req.parseBody();
+  const allErrors: z.ZodIssue[] = [];
+
+  // 1. Zodスキーマでテキストフィールドと座標を検証
+  const parsed = createWallSchema.safeParse(body);
+  if (!parsed.success) {
+    allErrors.push(...parsed.error.issues);
+  }
+
+  // 2. 画像ファイルを個別に検証し、エラーを収集
+  const imageFields = ['originalImageFile', 'thumbnailImageFile', 'rectifiedImageFile'];
+  for (const fieldName of imageFields) {
+    const file = body[fieldName];
+
+    if (!isUploadedFile(file) || file.size === 0) {
+      allErrors.push({
+        code: z.ZodIssueCode.custom,
+        path: [fieldName],
+        message: `A non-empty image file is required for ${fieldName}.`,
+      });
+    } else if (!file.type.startsWith('image/')) {
+      allErrors.push({
+        code: z.ZodIssueCode.custom,
+        path: [fieldName],
+        message: `Unsupported file type for ${fieldName}: ${file.type}.`,
+      });
+    }
+  }
+
+  // 3. エラーが一つでもあれば、すべてまとめて返す
+  if (allErrors.length > 0) {
+    return c.json({ errors: allErrors }, 400);
+  }
+
+  // ここまで来れば、すべてのデータは有効
+  const {
+    name,
+    latitude,
+    longitude,
+    approxHeading,
+    visibilityRadiusM,
+    cornerCoordinates,
+    canvasWidth,
+    canvasHeight,
+  } = parsed.data!;
+  const originalImageFile = body['originalImageFile'] as File;
+  const thumbnailImageFile = body['thumbnailImageFile'] as File;
+  const rectifiedImageFile = body['rectifiedImageFile'] as File;
+
+  try {
+    const newWallId = randomUUID();
+
+    // 3つのファイルとwallIdを渡してアップロード
+    const uploadedUrls = await uploadWallImagesToR2(
+      newWallId,
+      originalImageFile,
+      thumbnailImageFile,
+      rectifiedImageFile
+    );
+
+    const created = await db.transaction(async (tx) => {
+      const [newWall] = await tx
+        .insert(walls)
+        .values({
+          id: newWallId,
+          name,
+          latitude,
+          longitude,
+          originalImageUrl: uploadedUrls.originalImageUrl,
+          thumbnailImageUrl: uploadedUrls.thumbnailImageUrl,
+          rectifiedImageUrl: uploadedUrls.rectifiedImageUrl,
+          cornerCoordinates,
+          approxHeading,
+          visibilityRadiusM,
         })
-        .from(walls)
-        .where(eq(walls.id, id))
-        .limit(1),
-      db
-        .select({
+        .returning();
+
+      const [newCanvas] = await tx
+        .insert(canvases)
+        .values({
+          id: randomUUID(),
+          wallId: newWallId,
+          width: canvasWidth,
+          height: canvasHeight,
+          paletteVersion: DEFAULT_PALETTE_VERSION,
+          pixelData: createBlankPixelData(canvasWidth, canvasHeight),
+        })
+        .returning({
           id: canvases.id,
           width: canvases.width,
           height: canvases.height,
           paletteVersion: canvases.paletteVersion,
-        })
-        .from(canvases)
-        .where(eq(canvases.wallId, id))
-        .orderBy(asc(canvases.createdAt))
-        .limit(1),
-    ]);
-
-    if (!row) {
-      return c.json({ message: 'Wall not found' }, 404);
-    }
-
-    const responseData = {
-      id: row.id,
-      name: row.name,
-      latitude: row.latitude,
-      longitude: row.longitude,
-      originalImageUrl: row.originalImageUrl,
-      thumbnailImageUrl: row.thumbnailImageUrl,
-      rectifiedImageUrl: row.rectifiedImageUrl,
-      cornerCoordinates: parseCornerCoordinates(row.cornerCoordinates),
-      approxHeading: row.approxHeading,
-      visibilityRadiusM: row.visibilityRadiusM,
-      createdAt: row.createdAt,
-      photoUrl: row.thumbnailImageUrl,
-      canvas: canvasRow ?? null,
-    };
-    return c.json(responseData);
-  });
-
-  /**
-   * 壁を登録する
-   */
-  app.post('/walls', async (c) => {
-    const body = await c.req.parseBody();
-    const allErrors: z.ZodIssue[] = [];
-
-    // 1. Zodスキーマでテキストフィールドと座標を検証
-    const parsed = createWallSchema.safeParse(body);
-    if (!parsed.success) {
-      allErrors.push(...parsed.error.issues);
-    }
-
-    // 2. 画像ファイルを個別に検証し、エラーを収集
-    const imageFields = ['originalImageFile', 'thumbnailImageFile', 'rectifiedImageFile'];
-    for (const fieldName of imageFields) {
-      const file = body[fieldName];
-
-      if (!isUploadedFile(file) || file.size === 0) {
-        allErrors.push({
-          code: z.ZodIssueCode.custom,
-          path: [fieldName],
-          message: `A non-empty image file is required for ${fieldName}.`,
         });
-      } else if (!file.type.startsWith('image/')) {
-        allErrors.push({
-          code: z.ZodIssueCode.custom,
-          path: [fieldName],
-          message: `Unsupported file type for ${fieldName}: ${file.type}.`,
-        });
-      }
-    }
 
-    // 3. エラーが一つでもあれば、すべてまとめて返す
-    if (allErrors.length > 0) {
-      return c.json({ errors: allErrors }, 400);
-    }
+      return { newWall, newCanvas };
+    });
 
-    // ここまで来れば、すべてのデータは有効
-    const {
-      name,
-      latitude,
-      longitude,
-      approxHeading,
-      visibilityRadiusM,
-      cornerCoordinates,
-      canvasWidth,
-      canvasHeight,
-    } = parsed.data!;
-    const originalImageFile = body['originalImageFile'] as File;
-    const thumbnailImageFile = body['thumbnailImageFile'] as File;
-    const rectifiedImageFile = body['rectifiedImageFile'] as File;
-
-    try {
-      const newWallId = randomUUID();
-
-      // 3つのファイルとwallIdを渡してアップロード
-      const uploadedUrls = await uploadWallImagesToR2(
-        newWallId,
-        originalImageFile,
-        thumbnailImageFile,
-        rectifiedImageFile
-      );
-
-      const created = await db.transaction(async (tx) => {
-        const [newWall] = await tx
-          .insert(walls)
-          .values({
-            id: newWallId,
-            name,
-            latitude,
-            longitude,
-            originalImageUrl: uploadedUrls.originalImageUrl,
-            thumbnailImageUrl: uploadedUrls.thumbnailImageUrl,
-            rectifiedImageUrl: uploadedUrls.rectifiedImageUrl,
-            cornerCoordinates,
-            approxHeading,
-            visibilityRadiusM,
-          })
-          .returning();
-
-        const [newCanvas] = await tx
-          .insert(canvases)
-          .values({
-            id: randomUUID(),
-            wallId: newWallId,
-            width: canvasWidth,
-            height: canvasHeight,
-            paletteVersion: DEFAULT_PALETTE_VERSION,
-            pixelData: createBlankPixelData(canvasWidth, canvasHeight),
-          })
-          .returning({
-            id: canvases.id,
-            width: canvases.width,
-            height: canvases.height,
-            paletteVersion: canvases.paletteVersion,
-          });
-
-        return { newWall, newCanvas };
-      });
-
-      return c.json(
-        {
-          ...created.newWall,
-          photoUrl: created.newWall.thumbnailImageUrl,
-          canvas: created.newCanvas,
-          message: 'Wall created successfully',
-        },
-        201
-      );
-    } catch (error) {
-      console.error('Failed to create wall or upload images:', error);
-      return c.json(
-        { message: `Failed to create wall: ${error instanceof Error ? error.message : 'Unknown error'}` },
-        500
-      );
-    }
-  });
-}
+    return c.json(
+      {
+        ...created.newWall,
+        photoUrl: created.newWall.thumbnailImageUrl,
+        canvas: created.newCanvas,
+        message: 'Wall created successfully',
+      },
+      201
+    );
+  } catch (error) {
+    console.error('Failed to create wall or upload images:', error);
+    return c.json(
+      { message: `Failed to create wall: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      500
+    );
+  }
+});
