@@ -17,6 +17,7 @@ export const walls = pgTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
+    displayAddress: text('display_address'),
     latitude: doublePrecision('latitude').notNull(),
     longitude: doublePrecision('longitude').notNull(),
     originalImageUrl: text('original_image_url'),

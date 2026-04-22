@@ -41,6 +41,7 @@ const wallSeeds = [
   {
     id: "demo-wall-1",
     name: "Tokyo Station Demo Wall",
+    displayAddress: "東京都千代田区丸の内1丁目",
     latitude: 35.6809591,
     longitude: 139.7673068,
     originalImageUrl: unsplashImage("photo-1529429617124-aee711a5ac1c", {
@@ -67,6 +68,7 @@ const wallSeeds = [
   {
     id: "demo-wall-2",
     name: "Kanda Demo Shutter",
+    displayAddress: "東京都千代田区神田鍛冶町3丁目",
     latitude: 35.695,
     longitude: 139.77,
     originalImageUrl: unsplashImage("photo-1513694203232-719a280e022f", {

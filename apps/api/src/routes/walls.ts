@@ -62,6 +62,7 @@ const createWallSchema = z.object({
     (val) => Number(val),
     z.number().int().positive().max(CANVAS_MAX_SIZE, `canvasHeight must be <= ${CANVAS_MAX_SIZE}`)
   ),
+  displayAddress: z.string().optional().nullable(),
 });
 
 function isUploadedFile(input: unknown): input is File {
@@ -109,6 +110,7 @@ wallsApp.get('/nearest', async (c) => {
         latitude: walls.latitude,
         longitude: walls.longitude,
         thumbnailImageUrl: walls.thumbnailImageUrl,
+        displayAddress: walls.displayAddress,
         distance: distanceInMeters,
       })
       .from(walls)
@@ -124,8 +126,8 @@ wallsApp.get('/nearest', async (c) => {
     }
 
     // `photoUrl`を追加して、レスポンスの形式を他のエンドポイントと統一します。
-    const { id, name, latitude, longitude, thumbnailImageUrl, distance } = nearestWall;
-    return c.json({ id, name, latitude, longitude, photoUrl: thumbnailImageUrl, distance });
+    const { id, name, latitude, longitude, thumbnailImageUrl, displayAddress, distance } = nearestWall;
+    return c.json({ id, name, latitude, longitude, photoUrl: thumbnailImageUrl, displayAddress, distance });
   } catch (error) {
     console.error('Failed to find nearest wall:', error);
     return c.json({ message: 'データベースエラーにより、最も近い壁の検索に失敗しました。' }, 500);
@@ -145,6 +147,7 @@ wallsApp.get('/', async (c) => {
       latitude: walls.latitude,
       longitude: walls.longitude,
       thumbnailImageUrl: walls.thumbnailImageUrl,
+      displayAddress: walls.displayAddress,
     })
     .from(walls)
     .orderBy(asc(walls.createdAt));
@@ -152,6 +155,7 @@ wallsApp.get('/', async (c) => {
   const result = allWalls.map((wall) => ({
     id: wall.id,
     name: wall.name,
+    displayAddress: wall.displayAddress,
     latitude: wall.latitude,
     longitude: wall.longitude,
     photoUrl: wall.thumbnailImageUrl,
@@ -179,6 +183,7 @@ wallsApp.get('/:id', async (c) => {
         approxHeading: walls.approxHeading,
         visibilityRadiusM: walls.visibilityRadiusM,
         createdAt: walls.createdAt,
+        displayAddress: walls.displayAddress,
       })
       .from(walls)
       .where(eq(walls.id, id))
@@ -212,6 +217,7 @@ wallsApp.get('/:id', async (c) => {
     approxHeading: row.approxHeading,
     visibilityRadiusM: row.visibilityRadiusM,
     createdAt: row.createdAt,
+    displayAddress: row.displayAddress,
     photoUrl: row.thumbnailImageUrl,
     canvas: canvasRow ?? null,
   };
@@ -266,6 +272,7 @@ wallsApp.post('/', async (c) => {
     cornerCoordinates,
     canvasWidth,
     canvasHeight,
+    displayAddress,
   } = parsed.data!;
   const originalImageFile = body['originalImageFile'] as File;
   const thumbnailImageFile = body['thumbnailImageFile'] as File;
@@ -296,6 +303,7 @@ wallsApp.post('/', async (c) => {
           cornerCoordinates,
           approxHeading,
           visibilityRadiusM,
+          displayAddress,
           geom: sql`ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography`,
         })
         .returning();
