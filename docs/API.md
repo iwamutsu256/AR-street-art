@@ -2,7 +2,7 @@
 
 このドキュメントは、現在のコードベースに合わせた Street Art App の REST API、frontend API route、WebSocket realtime 仕様です。
 
-実装の中心は [apps/api/src/index.ts](/workspace/apps/api/src/index.ts) です。ブラウザからの REST 呼び出しは Next.js の rewrite を通して `/api/*` で利用します。
+API の起動処理は [apps/api/src/index.ts](/workspace/apps/api/src/index.ts)、HTTP ルートは [apps/api/src/routes](/workspace/apps/api/src/routes)、キャンバス状態管理は [apps/api/src/canvas/service.ts](/workspace/apps/api/src/canvas/service.ts)、WebSocket realtime は [apps/api/src/ws/canvas.ts](/workspace/apps/api/src/ws/canvas.ts) に分かれています。ブラウザからの REST 呼び出しは Next.js の rewrite を通して `/api/*` で利用します。
 
 ## Base URLs
 
