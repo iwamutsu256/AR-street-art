@@ -52,7 +52,7 @@ export default async function Home() {
           <div className="stack-sm">
             <div className="step-badge">Map</div>
             <h2 className="section-title">Wall Map</h2>
-            <p className="section-copy">一覧画面の地図表示は次段階です。登録画面では MapLibre で位置選択できます。</p>
+            <p className="section-copy">登録済みの壁を地図から探し、キャンバスや AR へ移動できます。</p>
           </div>
         </div>
         <MapPlaceholder />

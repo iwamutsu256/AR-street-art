@@ -36,12 +36,7 @@
 
 ### 近傍壁バナー
 
-`NearbyWallBanner` にも `AR で見る` link がありますが、現在のリンク先は `/walls/:id/ar` です。実装済み route は `/ar/:id` なので、この導線は現状では route mismatch しています。
-
-修正するなら、次のどちらかです。
-
-- `NearbyWallBanner` の link を `/ar/:id` に変更する
-- `/walls/:id/ar` を `/ar/:id` に流す route alias を追加する
+`NearbyWallBanner` の `AR で見る` link も、実装済み route の `/ar/:id` を指します。
 
 ## Data Loading
 
@@ -210,10 +205,9 @@ AR page は fullscreen overlay なので実害は小さい想定ですが、clea
 ## Recommended Next Steps
 
 1. `renderCanvasToDataUrl()` を canvas color model に合わせる
-2. `NearbyWallBanner` の AR link を `/ar/:id` に直す、または route alias を追加する
-3. `.mind` target を生成済み asset として保存し、runtime compile を避ける
-4. AR 表示中に最新 snapshot を再取得する、または WebSocket で artwork texture を更新する
-5. A-Frame / MindAR script loader を idempotent にする
-6. `/api/proxy-image` に allowlist、content-type、size、timeout の制限を追加する
-7. 将来 runtime を変える必要が出たら、A-Frame 依存部分の Three.js 移行を検討する
+2. `.mind` target を生成済み asset として保存し、runtime compile を避ける
+3. AR 表示中に最新 snapshot を再取得する、または WebSocket で artwork texture を更新する
+4. A-Frame / MindAR script loader を idempotent にする
+5. `/api/proxy-image` に allowlist、content-type、size、timeout の制限を追加する
+6. 将来 runtime を変える必要が出たら、A-Frame 依存部分の Three.js 移行を検討する
 8. 実機で camera permission、tracking 安定性、透明 pixel、route 導線を確認する

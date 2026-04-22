@@ -32,7 +32,10 @@ scaffold 段階を越えて「壁登録からリアルタイム編集と AR prot
   - `health` の表示
   - 壁一覧の表示
   - 各壁詳細への遷移
-  - 壁マップは placeholder
+- 壁マップ画面
+  - `/map`
+  - 表示中の地図範囲にある壁を pin 表示
+  - pin 選択時に壁詳細を取得し、書き込み / AR 導線を表示
 - 壁登録画面
   - 画像アップロード
   - 四隅編集
@@ -147,14 +150,11 @@ scaffold 段階を越えて「壁登録からリアルタイム編集と AR prot
 - 認証
 - レート制限
 - WebSocket auto reconnect
-- 壁一覧の本格的なマップブラウズ
-  - ホームの壁マップはプレースホルダ中心
 - 外部地図サービスへの導線
 - undo / layers / selection などの高度な描画機能
 - palette 管理 UI
 - PNG 書き出し
 - 複数 API インスタンスを前提にした Redis pub/sub 同期
-- `NearbyWallBanner` links to `/walls/:id/ar`, while the implemented AR route is `/ar/:id`
 - AR rendering should be reviewed for palette value mapping and script loading before production use
 - Load-test scripts are not currently checked into the repository
 

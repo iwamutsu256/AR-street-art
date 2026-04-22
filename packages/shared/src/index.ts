@@ -21,6 +21,7 @@ export type CanvasSummary = {
   width: number;
   height: number;
   paletteVersion: string;
+  activeConnectionCount: number;
 };
 
 export type PaletteDefinition = {
