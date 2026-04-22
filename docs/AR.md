@@ -62,22 +62,22 @@ AR page 本体は client component の `WallARPage` です。`ARScene` は brows
 現在の実装:
 
 ```ts
-const hex = snapshot.palette[bytes[i]] ?? "#000000";
-imageData.data[i * 4] = parseInt(hex.slice(1, 3), 16);
-imageData.data[i * 4 + 1] = parseInt(hex.slice(3, 5), 16);
-imageData.data[i * 4 + 2] = parseInt(hex.slice(5, 7), 16);
-imageData.data[i * 4 + 3] = 255;
+const pixelValue = normalizePixelValue(bytes[i] ?? 0, snapshot.palette.length);
+const paletteIndex = getPaletteIndexFromPixelValue(pixelValue);
+
+if (paletteIndex === null) {
+  imageData.data[offset + 3] = 0;
+  continue;
+}
+
+const hex = snapshot.palette[paletteIndex] ?? null;
 ```
 
 注意点:
 
-- canvas data model では `0` が transparent、`1` が `palette[0]`
-- 現在の AR rendering は `bytes[i]` をそのまま palette index に使っている
-- そのため `0` が transparent ではなく `palette[0]` になり、`1` は `palette[1]` になる
-- 全 pixel の alpha を `255` にしているため、transparent pixel は透過されない
-- `32` は `palette[32]` が存在しないので `#000000` fallback になる
-
-つまり、現在の AR snapshot rendering は canvas editor の色モデルと 1 つずれています。本番前に `0 = alpha 0`、`1..palette.length = palette[value - 1]` へ直す必要があります。
+- canvas data model と同じく `0` は transparent、`1` が `palette[0]`
+- 範囲外の値は `normalizePixelValue()` で transparent に正規化する
+- transparent pixel は alpha `0`、visible pixel は alpha `255` で PNG 化する
 
 ## AR Runtime
 
@@ -127,7 +127,8 @@ compile 完了後、`containerRef.current.innerHTML` で A-Frame scene を直接
 - `<a-plane>`
   - `src="#artwork-tex"`
   - rectified image の aspect ratio に合わせた `width` / `height`
-  - `material="transparent: true; alphaTest: 0.5;"`
+  - `pixel-art-texture`
+  - `material="shader: flat; transparent: true; alphaTest: 0.5;"`
 
 平面サイズは長辺を 1 とした正規化です。
 
@@ -135,6 +136,15 @@ compile 完了後、`containerRef.current.innerHTML` で A-Frame scene を直接
 const planeHeight = aspectRatio >= 1 ? 1 / aspectRatio : 1;
 const planeWidth = aspectRatio >= 1 ? 1 : aspectRatio;
 ```
+
+`pixel-art-texture` は A-Frame component として `ARScene` 内で登録します。A-Frame が内部で作った Three.js texture に対して次を設定します。
+
+- `magFilter = THREE.NearestFilter`
+- `minFilter = THREE.NearestFilter`
+- `generateMipmaps = false`
+- `anisotropy = 0`
+
+これにより、canvas snapshot 由来の低解像度 PNG を AR plane に引き伸ばしても pixel 間が linear interpolation で混ざらず、pixel art として硬い境界のまま表示されます。現状の A-Frame + MindAR 構成だけで対応できているため、この目的だけなら Three.js runtime への全面移行は不要です。
 
 ## UI State
 
@@ -195,7 +205,6 @@ AR page は fullscreen overlay なので実害は小さい想定ですが、clea
 - `.mind` file を保存していないため、AR page を開くたびに compile する
 - 1 scene 1 target のみ
 - AR 表示中に canvas の realtime update は反映されない
-- canvas snapshot rendering に transparent / palette offset の不整合がある
 - 近傍壁バナーの link が実装 route とずれている
 - A-Frame は CDN 依存
 - MindAR script の重複 append を避ける仕組みは未実装
@@ -204,10 +213,9 @@ AR page は fullscreen overlay なので実害は小さい想定ですが、clea
 
 ## Recommended Next Steps
 
-1. `renderCanvasToDataUrl()` を canvas color model に合わせる
-2. `.mind` target を生成済み asset として保存し、runtime compile を避ける
-3. AR 表示中に最新 snapshot を再取得する、または WebSocket で artwork texture を更新する
-4. A-Frame / MindAR script loader を idempotent にする
-5. `/api/proxy-image` に allowlist、content-type、size、timeout の制限を追加する
-6. 将来 runtime を変える必要が出たら、A-Frame 依存部分の Three.js 移行を検討する
-8. 実機で camera permission、tracking 安定性、透明 pixel、route 導線を確認する
+1. `.mind` target を生成済み asset として保存し、runtime compile を避ける
+2. AR 表示中に最新 snapshot を再取得する、または WebSocket で artwork texture を更新する
+3. A-Frame / MindAR script loader を idempotent にする
+4. `/api/proxy-image` に allowlist、content-type、size、timeout の制限を追加する
+5. 将来 runtime を変える必要が出たら、A-Frame 依存部分の Three.js 移行を検討する
+6. 実機で camera permission、tracking 安定性、透明 pixel、route 導線を確認する

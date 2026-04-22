@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import type { CanvasSnapshot, WallDetail } from '@street-art/shared';
+import {
+  getPaletteIndexFromPixelValue,
+  normalizePixelValue,
+  type CanvasSnapshot,
+  type WallDetail,
+} from '@street-art/shared';
 
 const ARScene = dynamic(() => import('../../../components/ar/ARScene'), { ssr: false });
 
@@ -16,11 +21,25 @@ function renderCanvasToDataUrl(snapshot: CanvasSnapshot): string {
   const imageData = ctx.createImageData(snapshot.width, snapshot.height);
   const bytes = Uint8Array.from(atob(snapshot.pixels), (c) => c.charCodeAt(0));
   for (let i = 0; i < bytes.length; i++) {
-    const hex = snapshot.palette[bytes[i]] ?? '#000000';
-    imageData.data[i * 4]     = parseInt(hex.slice(1, 3), 16);
-    imageData.data[i * 4 + 1] = parseInt(hex.slice(3, 5), 16);
-    imageData.data[i * 4 + 2] = parseInt(hex.slice(5, 7), 16);
-    imageData.data[i * 4 + 3] = 255;
+    const pixelValue = normalizePixelValue(bytes[i] ?? 0, snapshot.palette.length);
+    const paletteIndex = getPaletteIndexFromPixelValue(pixelValue);
+    const offset = i * 4;
+
+    if (paletteIndex === null) {
+      imageData.data[offset + 3] = 0;
+      continue;
+    }
+
+    const hex = snapshot.palette[paletteIndex] ?? null;
+    if (!hex) {
+      imageData.data[offset + 3] = 0;
+      continue;
+    }
+
+    imageData.data[offset] = parseInt(hex.slice(1, 3), 16);
+    imageData.data[offset + 1] = parseInt(hex.slice(3, 5), 16);
+    imageData.data[offset + 2] = parseInt(hex.slice(5, 7), 16);
+    imageData.data[offset + 3] = 255;
   }
   ctx.putImageData(imageData, 0, 0);
   return canvas.toDataURL('image/png');

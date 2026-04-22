@@ -12,6 +12,139 @@ interface Props {
 
 type Phase = 'loading' | 'compiling' | 'scanning' | 'found' | 'error';
 
+type TextureLike = {
+  [key: string]: unknown;
+  magFilter?: number;
+  minFilter?: number;
+  generateMipmaps?: boolean;
+  anisotropy?: number;
+  needsUpdate?: boolean;
+};
+
+type MaterialLike = {
+  [key: string]: unknown;
+  map?: TextureLike | null;
+  alphaMap?: TextureLike | null;
+  emissiveMap?: TextureLike | null;
+  needsUpdate?: boolean;
+};
+
+type MeshLike = {
+  material?: MaterialLike | MaterialLike[];
+};
+
+type Object3DLike = MeshLike & {
+  traverse?: (callback: (object: MeshLike) => void) => void;
+};
+
+type PixelArtAFrameElement = {
+  addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
+  removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
+  getObject3D?: (type: string) => Object3DLike | undefined;
+  object3D?: Object3DLike;
+  components?: {
+    material?: {
+      material?: MaterialLike | MaterialLike[];
+    };
+  };
+};
+
+type PixelArtAFrameComponent = {
+  el: PixelArtAFrameElement;
+  applyPixelTextureFilters?: () => void;
+};
+
+type AFrameGlobal = {
+  THREE: {
+    NearestFilter: number;
+  };
+  components?: Record<string, unknown>;
+  registerComponent: (name: string, component: unknown) => void;
+};
+
+const PIXEL_ART_COMPONENT = 'pixel-art-texture';
+const TEXTURE_FIELDS = ['map', 'alphaMap', 'emissiveMap'] as const;
+const TEXTURE_READY_EVENTS = ['loaded', 'materialloaded', 'materialtextureloaded'] as const;
+
+function isTextureLike(value: unknown): value is TextureLike {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      ('isTexture' in value || 'image' in value || 'needsUpdate' in value)
+  );
+}
+
+function applyNearestFilterToTexture(texture: TextureLike, nearestFilter: number) {
+  texture.magFilter = nearestFilter;
+  texture.minFilter = nearestFilter;
+  texture.generateMipmaps = false;
+  texture.anisotropy = 0;
+  texture.needsUpdate = true;
+}
+
+function applyNearestFilterToMaterial(
+  material: MaterialLike | MaterialLike[] | null | undefined,
+  nearestFilter: number
+) {
+  const materials = Array.isArray(material) ? material : [material];
+
+  for (const item of materials) {
+    if (!item) continue;
+
+    for (const field of TEXTURE_FIELDS) {
+      const texture = item[field];
+      if (isTextureLike(texture)) {
+        applyNearestFilterToTexture(texture, nearestFilter);
+      }
+    }
+
+    item.needsUpdate = true;
+  }
+}
+
+function applyPixelTextureFilters(el: PixelArtAFrameElement, nearestFilter: number) {
+  applyNearestFilterToMaterial(el.components?.material?.material, nearestFilter);
+
+  const object3D = el.getObject3D?.('mesh') ?? el.object3D;
+  if (!object3D) return;
+
+  applyNearestFilterToMaterial(object3D.material, nearestFilter);
+  object3D.traverse?.((object) => {
+    applyNearestFilterToMaterial(object.material, nearestFilter);
+  });
+}
+
+function registerPixelArtTextureComponent() {
+  const AFRAME = (window as Window & { AFRAME?: AFrameGlobal }).AFRAME;
+  if (!AFRAME || AFRAME.components?.[PIXEL_ART_COMPONENT]) return;
+
+  AFRAME.registerComponent(PIXEL_ART_COMPONENT, {
+    init(this: PixelArtAFrameComponent) {
+      this.applyPixelTextureFilters = () => {
+        applyPixelTextureFilters(this.el, AFRAME.THREE.NearestFilter);
+      };
+
+      for (const eventName of TEXTURE_READY_EVENTS) {
+        this.el.addEventListener(eventName, this.applyPixelTextureFilters);
+      }
+
+      this.applyPixelTextureFilters();
+    },
+
+    update(this: PixelArtAFrameComponent) {
+      this.applyPixelTextureFilters?.();
+    },
+
+    remove(this: PixelArtAFrameComponent) {
+      if (!this.applyPixelTextureFilters) return;
+
+      for (const eventName of TEXTURE_READY_EVENTS) {
+        this.el.removeEventListener(eventName, this.applyPixelTextureFilters);
+      }
+    },
+  });
+}
+
 export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>('loading');
@@ -30,6 +163,7 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cv = (window as any).MINDAR?.IMAGE;
       if (!cv) throw new Error('MindAR が読み込まれていません');
+      registerPixelArtTextureComponent();
 
       const compiler = new cv.Compiler();
 
@@ -73,12 +207,13 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
           <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
           <a-entity mindar-image-target="targetIndex: 0">
             <a-plane
+              pixel-art-texture
               src="#artwork-tex"
               width="${planeWidth}"
               height="${planeHeight}"
               position="0 0 0"
               rotation="0 0 0"
-              material="transparent: true; alphaTest: 0.5;"
+              material="shader: flat; transparent: true; alphaTest: 0.5;"
             ></a-plane>
           </a-entity>
         </a-scene>
