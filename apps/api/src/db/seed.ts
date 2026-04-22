@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { Buffer } from "node:buffer";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { count } from "drizzle-orm";
+import { count, sql as drizzleSql } from "drizzle-orm";
 import {
   DEFAULT_PALETTE_COLORS,
   DEFAULT_PALETTE_NAME,
@@ -11,9 +11,7 @@ import { env } from "../lib/env.js";
 import { db, sql } from "../lib/db.js";
 import { canvases, palettes, walls } from "./schema.js";
 
-const migrationsFolder = fileURLToPath(
-  new URL("../../drizzle", import.meta.url),
-);
+const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 type CornerCoordinate = { x: number; y: number };
 
@@ -43,6 +41,7 @@ const wallSeeds = [
   {
     id: "demo-wall-1",
     name: "Tokyo Station Demo Wall",
+    displayAddress: "東京都千代田区丸の内1丁目",
     latitude: 35.6809591,
     longitude: 139.7673068,
     originalImageUrl: unsplashImage("photo-1529429617124-aee711a5ac1c", {
@@ -69,6 +68,7 @@ const wallSeeds = [
   {
     id: "demo-wall-2",
     name: "Kanda Demo Shutter",
+    displayAddress: "東京都千代田区神田鍛冶町3丁目",
     latitude: 35.695,
     longitude: 139.77,
     originalImageUrl: unsplashImage("photo-1513694203232-719a280e022f", {
@@ -150,9 +150,14 @@ async function main() {
     .onConflictDoNothing({ target: palettes.version })
     .returning({ version: palettes.version, name: palettes.name });
 
+  const wallsWithGeom = wallSeeds.map((seed) => ({
+    ...seed,
+    geom: drizzleSql`ST_SetSRID(ST_MakePoint(${seed.longitude}, ${seed.latitude}), 4326)::geography`,
+  }));
+
   const insertedWalls = await db
     .insert(walls)
-    .values(wallSeeds)
+    .values(wallsWithGeom)
     .onConflictDoNothing({ target: walls.id })
     .returning({ id: walls.id, name: walls.name });
 

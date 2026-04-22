@@ -15,6 +15,20 @@
       "when": 1776421314912,
       "tag": "0001_wakeful_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776859474853,
+      "tag": "0002_oval_chimera",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776875369472,
+      "tag": "0003_superb_vengeance",
+      "breakpoints": true
     }
   ]
 }

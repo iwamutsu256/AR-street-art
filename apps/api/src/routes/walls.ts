@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { CANVAS_MAX_SIZE, DEFAULT_PALETTE_VERSION } from '@street-art/shared';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { z } from 'zod';
+import { z, type ZodIssue } from 'zod';
 import { createBlankPixelData } from '../canvas/service.js';
 import { canvases, walls } from '../db/schema.js';
 import { db } from '../lib/db.js';
@@ -62,6 +62,7 @@ const createWallSchema = z.object({
     (val) => Number(val),
     z.number().int().positive().max(CANVAS_MAX_SIZE, `canvasHeight must be <= ${CANVAS_MAX_SIZE}`)
   ),
+  displayAddress: z.string().optional().nullable(),
 });
 
 function isUploadedFile(input: unknown): input is File {
@@ -69,6 +70,69 @@ function isUploadedFile(input: unknown): input is File {
 }
 
 export const wallsApp = new Hono();
+
+/**
+ * 指定された座標から最も近い壁を返す
+ */
+const nearestWallQuerySchema = z.object({
+  lat: z.preprocess(
+    (val) => Number(val),
+    z.number().min(-90, 'latitude must be >= -90').max(90, 'latitude must be <= 90')
+  ),
+  lon: z.preprocess(
+    (val) => Number(val),
+    z.number().min(-180, 'longitude must be >= -180').max(180, 'longitude must be <= 180')
+  ),
+  radius: z.preprocess(
+    (val) => (val ? Number(val) : undefined),
+    z.number().int().positive('radius must be a positive integer').optional().default(100)
+  ),
+});
+
+wallsApp.get('/nearest', async (c) => {
+  const query = c.req.query();
+  const parsed = nearestWallQuerySchema.safeParse(query);
+
+  if (!parsed.success) {
+    return c.json({ errors: parsed.error.issues }, 400);
+  }
+
+  const { lat, lon, radius } = parsed.data;
+
+  try {
+    // PostGISの関数をDrizzleの`sql`ヘルパーと組み合わせて使用します。
+    const distanceInMeters = sql<number>`ST_Distance(geom, ST_MakePoint(${lon}, ${lat})::geography)`.as('distance');
+
+    const result = await db
+      .select({
+        id: walls.id,
+        name: walls.name,
+        latitude: walls.latitude,
+        longitude: walls.longitude,
+        thumbnailImageUrl: walls.thumbnailImageUrl,
+        displayAddress: walls.displayAddress,
+        distance: distanceInMeters,
+      })
+      .from(walls)
+      // ST_DWithinを使用して、空間インデックスを活用した効率的な絞り込みを行います。
+      .where(sql`ST_DWithin(geom, ST_MakePoint(${lon}, ${lat})::geography, ${radius})`)
+      .orderBy(asc(distanceInMeters))
+      .limit(1);
+
+    const [nearestWall] = result;
+
+    if (!nearestWall) {
+      return c.json(null);
+    }
+
+    // `photoUrl`を追加して、レスポンスの形式を他のエンドポイントと統一します。
+    const { id, name, latitude, longitude, thumbnailImageUrl, displayAddress, distance } = nearestWall;
+    return c.json({ id, name, latitude, longitude, photoUrl: thumbnailImageUrl, displayAddress, distance });
+  } catch (error) {
+    console.error('Failed to find nearest wall:', error);
+    return c.json({ message: 'データベースエラーにより、最も近い壁の検索に失敗しました。' }, 500);
+  }
+});
 
 /**
  * 壁一覧を返す
@@ -83,6 +147,7 @@ wallsApp.get('/', async (c) => {
       latitude: walls.latitude,
       longitude: walls.longitude,
       thumbnailImageUrl: walls.thumbnailImageUrl,
+      displayAddress: walls.displayAddress,
     })
     .from(walls)
     .orderBy(asc(walls.createdAt));
@@ -90,6 +155,7 @@ wallsApp.get('/', async (c) => {
   const result = allWalls.map((wall) => ({
     id: wall.id,
     name: wall.name,
+    displayAddress: wall.displayAddress,
     latitude: wall.latitude,
     longitude: wall.longitude,
     photoUrl: wall.thumbnailImageUrl,
@@ -117,6 +183,7 @@ wallsApp.get('/:id', async (c) => {
         approxHeading: walls.approxHeading,
         visibilityRadiusM: walls.visibilityRadiusM,
         createdAt: walls.createdAt,
+        displayAddress: walls.displayAddress,
       })
       .from(walls)
       .where(eq(walls.id, id))
@@ -150,6 +217,7 @@ wallsApp.get('/:id', async (c) => {
     approxHeading: row.approxHeading,
     visibilityRadiusM: row.visibilityRadiusM,
     createdAt: row.createdAt,
+    displayAddress: row.displayAddress,
     photoUrl: row.thumbnailImageUrl,
     canvas: canvasRow ?? null,
   };
@@ -161,7 +229,7 @@ wallsApp.get('/:id', async (c) => {
  */
 wallsApp.post('/', async (c) => {
   const body = await c.req.parseBody();
-  const allErrors: z.ZodIssue[] = [];
+  const allErrors: ZodIssue[] = [];
 
   // 1. Zodスキーマでテキストフィールドと座標を検証
   const parsed = createWallSchema.safeParse(body);
@@ -204,6 +272,7 @@ wallsApp.post('/', async (c) => {
     cornerCoordinates,
     canvasWidth,
     canvasHeight,
+    displayAddress,
   } = parsed.data!;
   const originalImageFile = body['originalImageFile'] as File;
   const thumbnailImageFile = body['thumbnailImageFile'] as File;
@@ -234,6 +303,8 @@ wallsApp.post('/', async (c) => {
           cornerCoordinates,
           approxHeading,
           visibilityRadiusM,
+          displayAddress,
+          geom: sql`ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography`,
         })
         .returning();
 
