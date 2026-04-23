@@ -1,5 +1,6 @@
 import { AdminNav } from '@/components/AdminNav';
 import { fetchWall } from '@/lib/api';
+import { DeleteButton } from './DeleteButton';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -13,9 +14,11 @@ export default async function WallDetailPage({ params }: { params: Promise<{ id:
     <>
       <AdminNav />
       <main style={{ padding: '2rem', maxWidth: '960px', margin: '0 auto' }}>
-        <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Link href="/walls" style={{ color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>← ウォール一覧</Link>
+          <DeleteButton id={wall.id} name={wall.name} />
         </div>
+
 
         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.25rem' }}>{wall.name}</h1>
         <p style={{ color: '#6b7280', margin: '0 0 2rem' }}>{wall.displayAddress ?? '住所未登録'}</p>

@@ -345,3 +345,26 @@ wallsApp.post('/', async (c) => {
     );
   }
 });
+
+
+
+
+wallsApp.delete('/:id', async (c) => {
+  const id = c.req.param('id');
+
+  try {
+    const [deleted] = await db
+      .delete(walls)
+      .where(eq(walls.id, id))
+      .returning({ id: walls.id });
+
+    if (!deleted) {
+      return c.json({ message: 'Wall not found' }, 404);
+    }
+
+    return c.json({ message: 'Wall deleted successfully' });
+  } catch (error) {
+    console.error('Failed to delete wall:', error);
+    return c.json({ message: 'Failed to delete wall' }, 500);
+  }
+});
