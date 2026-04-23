@@ -50,6 +50,33 @@ services:
       api:
         condition: service_started
 
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      target: dev
+    working_dir: /workspace
+    command: sh -lc "flock /workspace/.pnpm-install.lock pnpm install --no-frozen-lockfile && pnpm --filter @street-art/admin dev:docker"
+    env_file:
+      - .env
+    environment:
+      API_PROXY_TARGET: http://api:3001
+      INTERNAL_API_URL: http://api:3001
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+      npm_config_store_dir: /pnpm/store
+    ports:
+      - "3002:3002"
+    volumes:
+      - .:/workspace
+      - workspace_node_modules:/workspace/node_modules
+      - admin_node_modules:/workspace/apps/admin/node_modules
+      - pnpm_store:/pnpm/store
+    depends_on:
+      api:
+        condition: service_started
+
   api:
     build:
       context: .
@@ -102,6 +129,7 @@ services:
 volumes:
   workspace_node_modules:
   frontend_node_modules:
+  admin_node_modules:
   api_node_modules:
   postgres_data:
   pnpm_store:

@@ -5,7 +5,9 @@
   "scripts": {
     "dev:frontend": "pnpm --filter @street-art/frontend dev",
     "dev:api": "pnpm --filter @street-art/api dev",
+    "dev:admin": "pnpm --filter @street-art/admin dev",
     "dev": "pnpm -r --parallel --filter @street-art/frontend --filter @street-art/api dev",
+    "dev:all": "pnpm -r --parallel --filter @street-art/frontend --filter @street-art/api --filter @street-art/admin dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @street-art/api db:generate",
