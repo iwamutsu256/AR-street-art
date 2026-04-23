@@ -47,7 +47,7 @@ export default function WallsPage() {
         <NearestWallButton />
 
         <div className="walls-hub__links" aria-label="カベメニュー">
-          <Link className="walls-hub-list-button" href="/map">
+          <Link className="walls-hub-list-button" href="/">
             <MapPin aria-hidden="true" size={24} weight="regular" />
             <span>カベマップ</span>
             <CaretRight aria-hidden="true" size={20} weight="bold" />

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Gear, House, Wall, type Icon } from '@phosphor-icons/react';
+import { Gear, MapPin, Wall, type Icon } from '@phosphor-icons/react';
 
 type BottomNavigationItem = {
   href: string;
@@ -14,15 +14,15 @@ type BottomNavigationItem = {
 const items: BottomNavigationItem[] = [
   {
     href: '/',
-    label: 'ホーム',
-    Icon: House,
+    label: 'マップ',
+    Icon: MapPin,
     isActive: (pathname) => pathname === '/',
   },
   {
     href: '/walls',
     label: 'カベ',
     Icon: Wall,
-    isActive: (pathname) => pathname === '/map' || pathname === '/walls' || pathname.startsWith('/walls/'),
+    isActive: (pathname) => pathname === '/walls' || pathname.startsWith('/walls/'),
   },
   {
     href: '/settings',

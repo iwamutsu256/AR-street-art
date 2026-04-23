@@ -26,7 +26,7 @@ export default function RootLayout({
             </Link>
             <nav className="site-header__nav" aria-label="Global">
               <Link className="site-header__link" href="/">
-                ホーム
+                マップ
               </Link>
               <Link className="site-header__link" href="/walls">
                 カベ

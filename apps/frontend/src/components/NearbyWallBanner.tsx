@@ -8,7 +8,7 @@ export default function NearbyWallBanner() {
   const pathname = usePathname();
   const { nearbyWalls } = useNearbyWalls();
 
-  if (pathname === '/map') return null;
+  if (pathname === '/') return null;
   if (nearbyWalls.length === 0) return null;
 
   const wall = nearbyWalls[0];
