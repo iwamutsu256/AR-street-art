@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './globals.css';
+import BottomNavigation from '../components/BottomNavigation';
 import NearbyWallBanner from '../components/NearbyWallBanner';
 
 
@@ -27,6 +28,12 @@ export default function RootLayout({
               <Link className="site-header__link" href="/">
                 ホーム
               </Link>
+              <Link className="site-header__link" href="/walls">
+                カベ
+              </Link>
+              <Link className="site-header__link" href="/settings">
+                設定
+              </Link>
               <Link className="site-header__link site-header__link--primary" href="/walls/new">
                 新規壁登録
               </Link>
@@ -36,6 +43,7 @@ export default function RootLayout({
         {children}
 
         <NearbyWallBanner />
+        <BottomNavigation />
         
       </body>
     </html>
