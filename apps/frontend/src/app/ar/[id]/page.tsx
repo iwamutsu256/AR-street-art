@@ -105,11 +105,11 @@ export default function WallARPage() {
 
   if (error) {
     return (
-      <div style={{ background: 'black', position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, zIndex: 100 }}>
-        <p style={{ color: '#f87171', margin: 0 }}>{error}</p>
+      <div style={{ background: 'var(--color-ar-backdrop)', position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, zIndex: 100 }}>
+        <p style={{ color: 'var(--color-danger-on-dark)', margin: 0 }}>{error}</p>
         <button
           onClick={() => router.push(`/walls/${wallId}`)}
-          style={{ padding: '10px 24px', background: '#374151', color: 'white', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+          style={{ padding: '10px 24px', background: 'var(--color-control-on-dark)', color: 'var(--color-foreground-on-dark)', borderRadius: 8, border: 'none', cursor: 'pointer' }}
         >
           壁の詳細へ戻る
         </button>
@@ -119,9 +119,9 @@ export default function WallARPage() {
 
   if (!arData) {
     return (
-      <div style={{ background: 'black', position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-        <div style={{ color: 'white', textAlign: 'center', display: 'grid', gap: 12 }}>
-          <div className="ar-spinner" style={{ borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', margin: '0 auto' }} />
+      <div style={{ background: 'var(--color-ar-backdrop)', position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+        <div style={{ color: 'var(--color-foreground-on-dark)', textAlign: 'center', display: 'grid', gap: 12 }}>
+          <div className="ar-spinner" style={{ borderColor: 'color-mix(in srgb, var(--color-foreground-on-dark) 30%, transparent)', borderTopColor: 'var(--color-foreground-on-dark)', margin: '0 auto' }} />
           <p style={{ margin: 0, fontSize: 14 }}>AR を準備中...</p>
         </div>
       </div>
@@ -129,16 +129,16 @@ export default function WallARPage() {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'black', overflow: 'hidden', zIndex: 100 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--color-ar-backdrop)', overflow: 'hidden', zIndex: 100 }}>
       <div style={{ position: 'fixed', top: 16, left: 16, zIndex: 110 }}>
         <button
           onClick={() => { window.location.href = `/walls/${wallId}`; }}
           style={{
             padding: '8px 16px',
-            background: 'rgba(0,0,0,0.62)',
-            color: 'white',
+            background: 'var(--color-ar-control)',
+            color: 'var(--color-foreground-on-dark)',
             borderRadius: 999,
-            border: '1px solid rgba(255,255,255,0.2)',
+            border: '1px solid color-mix(in srgb, var(--color-foreground-on-dark) 20%, transparent)',
             fontSize: 14,
             cursor: 'pointer',
             backdropFilter: 'blur(8px)',

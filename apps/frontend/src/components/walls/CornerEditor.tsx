@@ -125,15 +125,15 @@ export function CornerEditor({
                   }}
                 >
                   <circle cx={point.x} cy={point.y} r={hitRadius} fill="transparent" />
-                  <circle cx={point.x} cy={point.y} r={outerRadius} fill="rgba(255, 255, 255, 0.98)" />
-                  <circle cx={point.x} cy={point.y} r={innerRadius} fill="rgba(182, 76, 45, 0.95)" />
+                  <circle cx={point.x} cy={point.y} r={outerRadius} fill="var(--color-foreground-on-dark)" fillOpacity={0.98} />
+                  <circle cx={point.x} cy={point.y} r={innerRadius} fill="var(--color-primary)" fillOpacity={0.95} />
                   <text
                     x={point.x}
                     y={Math.max(point.y - labelOffset, labelFontSize)}
                     textAnchor="middle"
                     fontSize={labelFontSize}
                     fontWeight="700"
-                    fill="#1f1a14"
+                    fill="var(--color-foreground)"
                     pointerEvents="none"
                   >
                     {index + 1}
