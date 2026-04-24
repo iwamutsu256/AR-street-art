@@ -8,6 +8,18 @@ const MIN_SHORT_EDGE = 1080;
 const MAX_ORIGINAL_LONG_EDGE = 3840;
 const THUMBNAIL_SIZE = 800;
 const RECTIFIED_MAX_LONG_EDGE = 1920;
+const JPEG_MIME_TYPE = 'image/jpeg';
+const HEIC_MIME_TYPES = new Set([
+  'image/heic',
+  'image/heif',
+  'image/heic-sequence',
+  'image/heif-sequence',
+  'image/x-heic',
+  'image/x-heif',
+]);
+
+export const WALL_IMAGE_INPUT_ACCEPT =
+  'image/*,.heic,.heif,.HEIC,.HEIF,image/heic,image/heif,image/heic-sequence,image/heif-sequence';
 
 export type WallImageMetadata = {
   width: number;
@@ -21,6 +33,11 @@ export type RectifiedImageAsset = {
   width: number;
   height: number;
   aspectRatio: number;
+};
+
+type PreparedWallImageFile = {
+  file: File;
+  originalFileSize: number;
 };
 
 function createCanvas(width: number, height: number) {
@@ -69,12 +86,99 @@ function canvasToJpegFile(canvas: HTMLCanvasElement, name: string, quality = 0.8
           return;
         }
 
-        resolve(new File([blob], name, { type: 'image/jpeg' }));
+        resolve(new File([blob], name, { type: JPEG_MIME_TYPE }));
       },
-      'image/jpeg',
+      JPEG_MIME_TYPE,
       quality
     );
   });
+}
+
+async function canLoadImageFromFile(file: File) {
+  try {
+    await loadImageFromFile(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getFileExtension(fileName: string) {
+  const dotIndex = fileName.lastIndexOf('.');
+
+  if (dotIndex < 0) {
+    return '';
+  }
+
+  return fileName.slice(dotIndex + 1).toLowerCase();
+}
+
+function replaceFileExtension(fileName: string, nextExtension: string) {
+  const dotIndex = fileName.lastIndexOf('.');
+
+  if (dotIndex < 0) {
+    return `${fileName}.${nextExtension}`;
+  }
+
+  return `${fileName.slice(0, dotIndex)}.${nextExtension}`;
+}
+
+function isHeicLikeFile(file: File) {
+  if (HEIC_MIME_TYPES.has(file.type.toLowerCase())) {
+    return true;
+  }
+
+  const extension = getFileExtension(file.name);
+  return extension === 'heic' || extension === 'heif';
+}
+
+async function convertHeicToJpegFile(file: File) {
+  const { heicTo } = await import('heic-to');
+  const convertedBlob = await heicTo({
+    blob: file,
+    quality: 0.9,
+    type: JPEG_MIME_TYPE,
+  });
+
+  if (!(convertedBlob instanceof Blob)) {
+    throw new Error('HEIC / HEIF 画像の変換に失敗しました。');
+  }
+
+  return new File([convertedBlob], replaceFileExtension(file.name, 'jpg'), {
+    type: JPEG_MIME_TYPE,
+    lastModified: file.lastModified,
+  });
+}
+
+export async function prepareWallImageFile(file: File): Promise<PreparedWallImageFile> {
+  if (!isHeicLikeFile(file)) {
+    return {
+      file,
+      originalFileSize: file.size,
+    };
+  }
+
+  if (await canLoadImageFromFile(file)) {
+    return {
+      file,
+      originalFileSize: file.size,
+    };
+  }
+
+  try {
+    const convertedFile = await convertHeicToJpegFile(file);
+
+    return {
+      file: convertedFile,
+      originalFileSize: file.size,
+    };
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && error.message
+        ? error.message
+        : 'HEIC / HEIF 画像の変換に失敗しました。お使いのブラウザではこの形式を処理できない可能性があります。'
+    );
+  }
 }
 
 function getLimitedSize(width: number, height: number, maxLongEdge: number) {
@@ -230,10 +334,17 @@ function renderRectifiedImage(
   return resultCanvas;
 }
 
-export async function inspectWallImage(file: File) {
+export async function inspectWallImage(
+  file: File,
+  options?: {
+    originalFileSize?: number;
+  }
+) {
   const errors: string[] = [];
 
-  if (file.size > MAX_UPLOAD_BYTES) {
+  const originalFileSize = options?.originalFileSize ?? file.size;
+
+  if (originalFileSize > MAX_UPLOAD_BYTES) {
     errors.push('画像ファイルは 10MB 以下にしてください。');
   }
 

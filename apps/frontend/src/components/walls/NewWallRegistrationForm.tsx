@@ -24,7 +24,9 @@ import {
   buildRectifiedImageAsset,
   buildWallImageFiles,
   inspectWallImage,
+  prepareWallImageFile,
   type RectifiedImageAsset,
+  WALL_IMAGE_INPUT_ACCEPT,
 } from "../../lib/wall-image";
 import {
   CANVAS_MIN_SIZE,
@@ -258,6 +260,9 @@ export function NewWallRegistrationForm({
   const [aspectRatioValue, setAspectRatioValue] = useState(1);
   const [values, setValues] = useState<WallFormValues>(initialValues);
   const [uploadIssues, setUploadIssues] = useState<string[]>([]);
+  const [registrationTopMessage, setRegistrationTopMessage] = useState<
+    string | null
+  >(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [rectifyPhase, setRectifyPhase] = useState<string | null>(null);
   const [aspectPhase, setAspectPhase] = useState<string | null>(null);
@@ -351,10 +356,24 @@ export function NewWallRegistrationForm({
 
   function beginRegistration(nextMethod: RegistrationMethod) {
     resetImagePipeline();
+    setRegistrationTopMessage(null);
     setMethod(nextMethod);
     setStep(nextMethod);
     setSuccess(null);
     setValues(initialValues);
+  }
+
+  function returnToRegistrationTop(message: string) {
+    resetImagePipeline();
+    setRegistrationTopMessage(message);
+    setMethod(null);
+    setStep("method");
+    setSuccess(null);
+    setValues(initialValues);
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }
 
   function goBack() {
@@ -452,7 +471,10 @@ export function NewWallRegistrationForm({
     setScanLocationMessage(null);
 
     try {
-      const inspection = await inspectWallImage(file);
+      const preparedImage = await prepareWallImageFile(file);
+      const inspection = await inspectWallImage(preparedImage.file, {
+        originalFileSize: preparedImage.originalFileSize,
+      });
 
       if (inspection.errors.length > 0) {
         setSelectedImage(null);
@@ -465,9 +487,9 @@ export function NewWallRegistrationForm({
         return;
       }
 
-      const nextPreviewUrl = URL.createObjectURL(file);
+      const nextPreviewUrl = URL.createObjectURL(preparedImage.file);
       setSelectedImage({
-        file,
+        file: preparedImage.file,
         previewUrl: nextPreviewUrl,
         source: "upload",
         width: inspection.metadata.width,
@@ -759,6 +781,12 @@ export function NewWallRegistrationForm({
           </p>
         </div>
       </div>
+      {registrationTopMessage ? (
+        <div className="error-banner" style={{ marginBottom: 16 }}>
+          <strong>{registrationTopMessage}</strong>
+          <div>スキャンを開始できないため、登録方法の選択画面に戻しました。</div>
+        </div>
+      ) : null}
       <div className="registration-method-grid">
         <button
           className="method-button h-40"
@@ -810,18 +838,23 @@ export function NewWallRegistrationForm({
             壁全体が入り、四隅が見えていて、極端に斜めすぎず、暗すぎない写真を選んでください。
           </p>
         </div>
-        <div className="tag">JPG / PNG / WebP から受付</div>
+        <div className="tag">JPG / PNG / WebP / HEIC / HEIF に対応</div>
       </div>
 
       <ul className="upload-hints">
         <li>アスペクト比は 1:3 から 3:1 です。</li>
         <li>短辺 1080px 以上、ファイルサイズは 10MB 以下です。</li>
         <li>長辺が 3840px を超える場合は保存時に自動で縮小します。</li>
+        <li>HEIC / HEIF は必要に応じて JPEG へ変換して処理します。</li>
       </ul>
 
       <label className="field-label">
         壁画像
-        <input accept="image/*" onChange={handleImageSelection} type="file" />
+        <input
+          accept={WALL_IMAGE_INPUT_ACCEPT}
+          onChange={handleImageSelection}
+          type="file"
+        />
       </label>
 
       {uploadIssues.length > 0 ? (
@@ -871,7 +904,12 @@ export function NewWallRegistrationForm({
         </div>
       </div>
 
-      <WallScanner onCapture={handleScanCapture} />
+      <WallScanner
+        onCapture={handleScanCapture}
+        onResolutionInsufficient={() =>
+          returnToRegistrationTop("カメラの解像度が足りません")
+        }
+      />
 
       <StepNavigation hideNext />
     </>

@@ -13,7 +13,9 @@ import {
   buildRectifiedImageAsset,
   buildWallImageFiles,
   inspectWallImage,
+  prepareWallImageFile,
   type RectifiedImageAsset,
+  WALL_IMAGE_INPUT_ACCEPT,
 } from '../../lib/wall-image';
 import {
   CANVAS_MIN_SIZE,
@@ -144,26 +146,38 @@ export function NewWallForm({ mapTilerKey }: NewWallFormProps) {
     setSubmitPhase(null);
     setRectifiedPreview(null);
 
-    const inspection = await inspectWallImage(file);
+    try {
+      const preparedImage = await prepareWallImageFile(file);
+      const inspection = await inspectWallImage(preparedImage.file, {
+        originalFileSize: preparedImage.originalFileSize,
+      });
 
-    if (inspection.errors.length > 0) {
+      if (inspection.errors.length > 0) {
+        setSelectedImage(null);
+        setCorners(getDefaultCornerCoordinates(1200, 800));
+        setUploadIssues([...inspection.errors, '別のファイルをアップロードしてください。']);
+        event.currentTarget.value = '';
+        return;
+      }
+
+      const nextPreviewUrl = URL.createObjectURL(preparedImage.file);
+      setSelectedImage({
+        file: preparedImage.file,
+        previewUrl: nextPreviewUrl,
+        width: inspection.metadata.width,
+        height: inspection.metadata.height,
+        willDownscaleOriginal: inspection.metadata.willDownscaleOriginal,
+      });
+      setCorners(getDefaultCornerCoordinates(inspection.metadata.width, inspection.metadata.height));
+      setCanvasLongSide(DEFAULT_CANVAS_SIZE);
+    } catch (error) {
       setSelectedImage(null);
-      setCorners(getDefaultCornerCoordinates(1200, 800));
-      setUploadIssues([...inspection.errors, '別のファイルをアップロードしてください。']);
+      setUploadIssues([
+        error instanceof Error ? error.message : '画像の読み込みに失敗しました。',
+        '別のファイルをアップロードしてください。',
+      ]);
       event.currentTarget.value = '';
-      return;
     }
-
-    const nextPreviewUrl = URL.createObjectURL(file);
-    setSelectedImage({
-      file,
-      previewUrl: nextPreviewUrl,
-      width: inspection.metadata.width,
-      height: inspection.metadata.height,
-      willDownscaleOriginal: inspection.metadata.willDownscaleOriginal,
-    });
-    setCorners(getDefaultCornerCoordinates(inspection.metadata.width, inspection.metadata.height));
-    setCanvasLongSide(DEFAULT_CANVAS_SIZE);
   }
 
   function handleCornerChange(nextCorners: typeof corners) {
@@ -314,18 +328,23 @@ export function NewWallForm({ mapTilerKey }: NewWallFormProps) {
               壁全体が入り、四隅が見えていて、極端に斜めすぎず、暗すぎない写真を選んでください。
             </p>
           </div>
-          <div className="tag">JPG / PNG / WebP から受付</div>
+          <div className="tag">JPG / PNG / WebP / HEIC / HEIF に対応</div>
         </div>
 
         <ul className="upload-hints">
           <li>アスペクト比は 1:3 から 3:1 です。</li>
           <li>短辺 1080px 以上、ファイルサイズは 10MB 以下です。</li>
           <li>長辺が 3840px を超える場合は保存時に自動で縮小します。</li>
+          <li>HEIC / HEIF は必要に応じて JPEG へ変換して処理します。</li>
         </ul>
 
         <label className="field-label">
           壁画像
-          <input accept="image/*" onChange={handleImageSelection} type="file" />
+          <input
+            accept={WALL_IMAGE_INPUT_ACCEPT}
+            onChange={handleImageSelection}
+            type="file"
+          />
         </label>
 
         {uploadIssues.length > 0 ? (
