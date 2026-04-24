@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useEffect,
   useState,
@@ -8,6 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { ArrowLeft } from "@phosphor-icons/react";
 import {
   CANVAS_MAX_SIZE,
   DEFAULT_CANVAS_SIZE,
@@ -32,6 +34,8 @@ import {
   getDefaultCornerCoordinates,
   serializeCornerCoordinates,
 } from "../../lib/walls";
+import { AppHeader } from "../AppHeader";
+import { ConfirmationDialog } from "../ConfirmationDialog";
 
 const ASPECT_RATIO_MIN = 1 / 3;
 const ASPECT_RATIO_MAX = 3;
@@ -80,7 +84,6 @@ type StepNavigationProps = {
   nextBusy?: boolean;
   nextDisabled?: boolean;
   nextLabel?: string;
-  onBack?: () => void;
   onNext?: () => void | Promise<void>;
 };
 
@@ -88,17 +91,6 @@ const initialValues: WallFormValues = {
   name: "",
   latitude: "",
   longitude: "",
-};
-
-const stepLabels: Record<WallStep, string> = {
-  method: "登録方法",
-  scan: "スキャン",
-  upload: "画像選択",
-  region: "範囲確認",
-  aspect: "比率調整",
-  canvas: "サイズ",
-  details: "名称と位置",
-  review: "確認",
 };
 
 function parseCoordinate(value: string, min: number, max: number) {
@@ -186,7 +178,11 @@ function getAspectRatioFromSliderValue(sliderValue: number) {
 }
 
 function getAspectRatioSliderValue(aspectRatio: number) {
-  const safeAspectRatio = clamp(aspectRatio, ASPECT_RATIO_MIN, ASPECT_RATIO_MAX);
+  const safeAspectRatio = clamp(
+    aspectRatio,
+    ASPECT_RATIO_MIN,
+    ASPECT_RATIO_MAX,
+  );
   const logMin = Math.log(ASPECT_RATIO_MIN);
   const logMax = Math.log(ASPECT_RATIO_MAX);
   const progress = (Math.log(safeAspectRatio) - logMin) / (logMax - logMin);
@@ -220,28 +216,16 @@ function StepNavigation({
   hideNext = false,
   nextBusy = false,
   nextDisabled = false,
-  nextLabel = "次へ",
-  onBack,
+  nextLabel = "次に進む",
   onNext,
 }: StepNavigationProps) {
   return (
     <div className="step-navigation">
       <div>
-        {onBack ? (
-          <button
-            className="button button-secondary"
-            onClick={onBack}
-            type="button"
-          >
-            {backLabel}
-          </button>
-        ) : null}
-      </div>
-      <div className="inline-actions">
         {children}
         {hideNext ? null : (
           <button
-            className="button button-primary"
+            className="button button-primary w-full justify-center"
             disabled={nextDisabled || nextBusy}
             onClick={() => void onNext?.()}
             type="button"
@@ -257,6 +241,7 @@ function StepNavigation({
 export function NewWallRegistrationForm({
   mapTilerKey,
 }: NewWallRegistrationFormProps) {
+  const router = useRouter();
   const [method, setMethod] = useState<RegistrationMethod | null>(null);
   const [step, setStep] = useState<WallStep>("method");
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
@@ -281,6 +266,7 @@ export function NewWallRegistrationForm({
     null,
   );
   const [success, setSuccess] = useState<CreateWallResponse | null>(null);
+  const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedImage) {
@@ -327,6 +313,17 @@ export function NewWallRegistrationForm({
   const longitude = parseCoordinate(values.longitude, -180, 180);
   const stepFlow = getStepFlow(method);
   const currentStepIndex = Math.max(0, stepFlow.indexOf(step));
+  const totalSteps = stepFlow.length;
+  const hasDeterminateProgress = method !== null && totalSteps > 1;
+  const progressPercent = hasDeterminateProgress
+    ? (currentStepIndex / (totalSteps - 1)) * 100
+    : 0;
+  const progressStatus = hasDeterminateProgress
+    ? `${currentStepIndex + 1} / ${totalSteps}`
+    : "開始";
+  const progressDescription = hasDeterminateProgress
+    ? `全${totalSteps}ステップ中${currentStepIndex + 1}ステップ目`
+    : "登録方法を選択";
   const canSubmit =
     Boolean(selectedImage) &&
     Boolean(effectiveRectifiedPreview) &&
@@ -378,6 +375,29 @@ export function NewWallRegistrationForm({
     }
   }
 
+  function leaveRegistration() {
+    router.push("/walls");
+  }
+
+  function handleHeaderBack() {
+    if (success) {
+      leaveRegistration();
+      return;
+    }
+
+    if (currentStepIndex > 0) {
+      goBack();
+      return;
+    }
+
+    leaveRegistration();
+  }
+
+  function handleDiscardRegistration() {
+    setIsDiscardDialogOpen(false);
+    leaveRegistration();
+  }
+
   async function handleNext() {
     setMessages([]);
 
@@ -387,7 +407,7 @@ export function NewWallRegistrationForm({
     }
 
     if (step === "region" && !rectifiedPreview) {
-      setMessages(["キャンバス範囲を確定し、rectified を生成してください。"]);
+      setMessages(["キャンバス範囲を確定してください。"]);
       return;
     }
 
@@ -553,7 +573,7 @@ export function NewWallRegistrationForm({
 
     setMessages([]);
     setAspectAdjustedPreview(null);
-    setRectifyPhase("rectified を生成しています。");
+    setRectifyPhase("画像を補正しています。");
 
     try {
       const nextRectifiedAsset = await buildRectifiedImageAsset({
@@ -590,7 +610,7 @@ export function NewWallRegistrationForm({
 
   async function confirmAspectRatio() {
     if (!rectifiedPreview) {
-      setMessages(["先に rectified を生成してください。"]);
+      setMessages(["先に範囲を確定し、傾きを補正してください。"]);
       return false;
     }
 
@@ -644,7 +664,7 @@ export function NewWallRegistrationForm({
     }
 
     if (!effectiveRectifiedPreview) {
-      setMessages(["rectified を生成してください。"]);
+      setMessages(["範囲を確定してください。"]);
       return;
     }
 
@@ -716,36 +736,32 @@ export function NewWallRegistrationForm({
   }
 
   const renderProgress = () => (
-    <div className="registration-progress" aria-label="登録ステップ">
-      {stepFlow.map((flowStep, index) => (
+    <div className="overflow-hidden h-1" aria-label="登録の進捗" role="group">
+      <div
+        className="h-1 transition-all duration-200 bg-background-strong"
+        aria-hidden="true"
+      >
         <div
-          className={`registration-progress__item${
-            index === currentStepIndex ? " is-active" : ""
-          }${index < currentStepIndex ? " is-complete" : ""}`}
-          key={flowStep}
-        >
-          <span>{index + 1}</span>
-          <strong>{stepLabels[flowStep]}</strong>
-        </div>
-      ))}
+          className="h-full bg-primary"
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
     </div>
   );
 
   const renderMethodStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Step 1</div>
-          <h2 className="section-title">登録方法を選択</h2>
+          <h2 className="section-title text-2xl font-bold">登録方法を選択</h2>
           <p className="section-copy">
             カメラで壁面をスキャンするか、手元の画像をアップロードして登録します。
           </p>
         </div>
       </div>
-
       <div className="registration-method-grid">
         <button
-          className="method-button"
+          className="method-button h-40"
           onClick={() => beginRegistration("scan")}
           type="button"
         >
@@ -780,15 +796,16 @@ export function NewWallRegistrationForm({
           </span>
         </button>
       </div>
-    </section>
+    </>
   );
 
   const renderUploadStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Step {currentStepIndex + 1}</div>
-          <h2 className="section-title">写真をアップロード</h2>
+          <h2 className="section-title text-2xl font-bold">
+            写真をアップロード
+          </h2>
           <p className="section-copy">
             壁全体が入り、四隅が見えていて、極端に斜めすぎず、暗すぎない写真を選んでください。
           </p>
@@ -841,41 +858,34 @@ export function NewWallRegistrationForm({
         </div>
       ) : null}
 
-      <StepNavigation
-        nextDisabled={!selectedImage}
-        nextLabel="範囲確認へ"
-        onBack={goBack}
-        onNext={handleNext}
-      />
-    </section>
+      <StepNavigation nextDisabled={!selectedImage} onNext={handleNext} />
+    </>
   );
 
   const renderScanStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Step {currentStepIndex + 1}</div>
-          <h2 className="section-title">壁面を撮影</h2>
-          <p className="section-copy">
-            撮影後にキャンバス領域を確認できます。四隅が入るように、長方形の壁を正面から撮影してください。
-          </p>
+          <h2 className="section-title text-2xl font-bold">壁面を撮影</h2>
+          <p className="section-copy">壁全体を、正面から撮影してください。</p>
         </div>
       </div>
 
       <WallScanner onCapture={handleScanCapture} />
 
-      <StepNavigation hideNext onBack={goBack} />
-    </section>
+      <StepNavigation hideNext />
+    </>
   );
 
   const renderRegionStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Step {currentStepIndex + 1}</div>
-          <h2 className="section-title">キャンバス領域を確認</h2>
+          <h2 className="section-title text-2xl font-bold">
+            キャンバス範囲を選択
+          </h2>
           <p className="section-copy">
-            4点を動かして範囲を決めたら、確定ボタンで rectified を生成します。
+            キャンバス範囲の四隅を選択してください。
           </p>
         </div>
       </div>
@@ -896,27 +906,19 @@ export function NewWallRegistrationForm({
           />
 
           <div className="inline-actions">
-            <button
-              className="button button-primary"
-              disabled={Boolean(rectifyPhase)}
-              onClick={handleGenerateRectified}
-              type="button"
-            >
-              {rectifyPhase
-                ? "rectified 生成中…"
-                : rectifiedPreview
-                  ? "rectified を再生成"
-                  : "ハンドル位置を確定して rectified を生成"}
-            </button>
-            {rectifiedPreview ? (
-              <div className="metric-pill">
-                <strong>生成済み</strong>
-                <span>
-                  {rectifiedPreview.width} x {rectifiedPreview.height}px
-                </span>
-              </div>
-            ) : (
-              <div className="tag">確定後に次へ進めます</div>
+            {!rectifiedPreview && (
+              <button
+                className="button button-primary w-full justify-center"
+                disabled={Boolean(rectifyPhase)}
+                onClick={handleGenerateRectified}
+                type="button"
+              >
+                {rectifyPhase
+                  ? "補正中…"
+                  : rectifiedPreview
+                    ? "補正完了"
+                    : "範囲を確定"}
+              </button>
             )}
           </div>
 
@@ -924,24 +926,19 @@ export function NewWallRegistrationForm({
 
           {rectifiedPreview ? (
             <div className="preview-frame">
-              <div className="preview-image">
+              <div className="overflow-hidden bg-background">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
+                  className="w-full"
                   src={rectifiedPreview.previewUrl}
-                  alt="生成した rectified プレビュー"
+                  alt="補正済み画像プレビュー"
                 />
               </div>
-              <div className="notice">
-                rectified を生成しました。
-                {method === "upload"
-                  ? "次に比率を調整します。"
-                  : "次にキャンバスサイズを決めます。"}
-              </div>
+              <div className="notice">補正が完了しました。</div>
             </div>
           ) : (
             <div className="notice">
-              ハンドル位置を確認したら「ハンドル位置を確定して rectified
-              を生成」を押してください。
+              四隅を選択し、「範囲を確定」を押してください。
             </div>
           )}
         </div>
@@ -951,19 +948,18 @@ export function NewWallRegistrationForm({
 
       <StepNavigation
         nextDisabled={!rectifiedPreview || Boolean(rectifyPhase)}
-        nextLabel={method === "upload" ? "比率調整へ" : "サイズ選択へ"}
-        onBack={goBack}
         onNext={handleNext}
       />
-    </section>
+    </>
   );
 
   const renderAspectStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Step {currentStepIndex + 1}</div>
-          <h2 className="section-title">アスペクト比を調整</h2>
+          <h2 className="section-title text-2xl font-bold">
+            アスペクト比を調整
+          </h2>
           <p className="section-copy">
             射影変換だけでは復元しきれない元の比率を、1:3 から 3:1
             の範囲で補正します。
@@ -1052,22 +1048,20 @@ export function NewWallRegistrationForm({
       <StepNavigation
         nextBusy={Boolean(aspectPhase)}
         nextDisabled={!rectifiedPreview}
-        nextLabel="この比率で次へ"
-        onBack={goBack}
         onNext={handleNext}
       />
-    </section>
+    </>
   );
 
   const renderCanvasStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Step {currentStepIndex + 1}</div>
-          <h2 className="section-title">キャンバスサイズを決める</h2>
+          <h2 className="section-title text-2xl font-bold">
+            キャンバスサイズを指定
+          </h2>
           <p className="section-copy">
-            スライダーは長辺のピクセル数です。rectified
-            のアスペクト比を基準に短辺を自動計算します。
+            スライダーで、キャンバスのピクセル数を指定してください。
           </p>
         </div>
         <Link
@@ -1147,19 +1141,16 @@ export function NewWallRegistrationForm({
 
       <StepNavigation
         nextDisabled={!effectiveRectifiedPreview}
-        nextLabel="名称と位置へ"
-        onBack={goBack}
         onNext={handleNext}
       />
-    </section>
+    </>
   );
 
   const renderDetailsStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Step {currentStepIndex + 1}</div>
-          <h2 className="section-title">名称と位置情報</h2>
+          <h2 className="section-title text-2xl font-bold">名称と位置情報</h2>
           <p className="section-copy">
             壁の名前と位置を設定します。スキャンで登録した場合は、撮影完了時の位置情報を自動入力します。
           </p>
@@ -1187,36 +1178,31 @@ export function NewWallRegistrationForm({
         </div>
       </div>
 
-      <div className="field-grid field-grid--two" style={{ marginBottom: 16 }}>
-        <label className="field-label">
-          緯度
-          <input
-            inputMode="decimal"
-            onChange={(event) =>
-              setValues((current) => ({
-                ...current,
-                latitude: event.target.value,
-              }))
-            }
-            placeholder="35.680959"
-            value={values.latitude}
-          />
-        </label>
-        <label className="field-label">
-          経度
-          <input
-            inputMode="decimal"
-            onChange={(event) =>
-              setValues((current) => ({
-                ...current,
-                longitude: event.target.value,
-              }))
-            }
-            placeholder="139.767307"
-            value={values.longitude}
-          />
-        </label>
-      </div>
+      <input
+        type="hidden"
+        inputMode="decimal"
+        onChange={(event) =>
+          setValues((current) => ({
+            ...current,
+            latitude: event.target.value,
+          }))
+        }
+        placeholder="35.680959"
+        value={values.latitude}
+      />
+
+      <input
+        type="hidden"
+        inputMode="decimal"
+        onChange={(event) =>
+          setValues((current) => ({
+            ...current,
+            longitude: event.target.value,
+          }))
+        }
+        placeholder="139.767307"
+        value={values.longitude}
+      />
 
       <LocationPicker
         mapTilerKey={mapTilerKey}
@@ -1244,18 +1230,16 @@ export function NewWallRegistrationForm({
           longitude === null
         }
         nextLabel="内容確認へ"
-        onBack={goBack}
         onNext={handleNext}
       />
-    </section>
+    </>
   );
 
   const renderReviewStep = () => (
-    <section className="section-card">
+    <>
       <div className="section-topline">
         <div className="stack-sm">
-          <div className="step-badge">Finish</div>
-          <h2 className="section-title">登録内容を送信</h2>
+          <h2 className="section-title text-2xl font-bold">登録内容を送信</h2>
           <p className="section-copy">
             API には既存の <span className="mono">POST /api/walls</span>{" "}
             を使い、フロント側で整えた 3種類の画像を multipart で送ります。
@@ -1319,58 +1303,97 @@ export function NewWallRegistrationForm({
           </Link>
         </div>
       </div>
-    </section>
+    </>
   );
 
   return (
-    <form className="stack-lg" onSubmit={handleSubmit}>
-      {success ? (
-        <div className="success-banner">
-          <strong>{success.name} を登録しました。</strong>
-          <div className="stack-sm" style={{ marginTop: 8 }}>
-            <div>
-              キャンバスサイズ: {success.canvas?.width} x{" "}
-              {success.canvas?.height}px
-            </div>
-            <div className="mono">Wall ID: {success.id}</div>
-            <div className="inline-actions">
-              <Link
-                className="button button-primary"
-                href={`/walls/${success.id}`}
-              >
-                壁詳細へ
-              </Link>
-              <Link className="button button-secondary" href="/">
-                壁一覧へ戻る
-              </Link>
+    <>
+      <AppHeader
+        leading={
+          <button
+            aria-label={
+              success || currentStepIndex === 0
+                ? "カベへ戻る"
+                : "前のステップへ戻る"
+            }
+            className="site-header__control site-header__control--icon"
+            onClick={handleHeaderBack}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={22} weight="bold" />
+          </button>
+        }
+        title={<div className="site-header__title">新規壁登録</div>}
+        trailing={
+          success ? null : (
+            <button
+              className="site-header__control site-header__control--text"
+              onClick={() => setIsDiscardDialogOpen(true)}
+              type="button"
+            >
+              キャンセル
+            </button>
+          )
+        }
+      />
+      {renderProgress()}
+      <form className="new-wall-registration-form" onSubmit={handleSubmit}>
+        {success ? (
+          <div className="success-banner">
+            <strong>{success.name} を登録しました。</strong>
+            <div className="stack-sm" style={{ marginTop: 8 }}>
+              <div>
+                キャンバスサイズ: {success.canvas?.width} x{" "}
+                {success.canvas?.height}px
+              </div>
+              <div className="mono">Wall ID: {success.id}</div>
+              <div className="inline-actions">
+                <Link
+                  className="button button-primary"
+                  href={`/walls/${success.id}`}
+                >
+                  壁詳細へ
+                </Link>
+                <Link className="button button-secondary" href="/">
+                  壁一覧へ戻る
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <>
-          {renderProgress()}
+        ) : (
+          <>
+            {messages.length > 0 ? (
+              <div className="error-banner">
+                <strong>入力内容を確認してください。</strong>
+                <ul>
+                  {messages.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
-          {messages.length > 0 ? (
-            <div className="error-banner">
-              <strong>入力内容を確認してください。</strong>
-              <ul>
-                {messages.map((message) => (
-                  <li key={message}>{message}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {step === "method" ? renderMethodStep() : null}
-          {step === "scan" ? renderScanStep() : null}
-          {step === "upload" ? renderUploadStep() : null}
-          {step === "region" ? renderRegionStep() : null}
-          {step === "aspect" ? renderAspectStep() : null}
-          {step === "canvas" ? renderCanvasStep() : null}
-          {step === "details" ? renderDetailsStep() : null}
-          {step === "review" ? renderReviewStep() : null}
-        </>
-      )}
-    </form>
+            {step === "method" ? renderMethodStep() : null}
+            {step === "scan" ? renderScanStep() : null}
+            {step === "upload" ? renderUploadStep() : null}
+            {step === "region" ? renderRegionStep() : null}
+            {step === "aspect" ? renderAspectStep() : null}
+            {step === "canvas" ? renderCanvasStep() : null}
+            {step === "details" ? renderDetailsStep() : null}
+            {step === "review" ? renderReviewStep() : null}
+          </>
+        )}
+      </form>
+      <ConfirmationDialog
+        cancelLabel="キャンセル"
+        confirmLabel="破棄"
+        confirmTone="destructive"
+        description="ここまで入力した内容は保存されません。新規壁登録を中止してカベ画面へ戻ります。"
+        onCancel={() => setIsDiscardDialogOpen(false)}
+        onConfirm={handleDiscardRegistration}
+        open={isDiscardDialogOpen}
+        title="入力内容を破棄しますか？"
+      />
+    </>
   );
 }

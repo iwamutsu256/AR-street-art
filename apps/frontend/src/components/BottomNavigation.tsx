@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Gear, MapPin, Wall, type Icon } from "@phosphor-icons/react";
+import { getAppChromeSettings } from "../lib/appChrome";
 
 type BottomNavigationItem = {
   href: string;
@@ -36,6 +37,11 @@ const items: BottomNavigationItem[] = [
 
 export default function BottomNavigation() {
   const pathname = usePathname();
+  const { showBottomNavigation } = getAppChromeSettings(pathname);
+
+  if (!showBottomNavigation) {
+    return null;
+  }
 
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile">

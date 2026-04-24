@@ -3,12 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useNearbyWalls } from '../hooks/useNearbyWalls';
+import { getAppChromeSettings } from '../lib/appChrome';
 
 export default function NearbyWallBanner() {
   const pathname = usePathname();
   const { nearbyWalls } = useNearbyWalls();
+  const { showNearbyWallBanner } = getAppChromeSettings(pathname);
 
   if (pathname === '/') return null;
+  if (!showNearbyWallBanner) return null;
   if (nearbyWalls.length === 0) return null;
 
   const wall = nearbyWalls[0];

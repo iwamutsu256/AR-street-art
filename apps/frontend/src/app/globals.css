@@ -31,6 +31,9 @@
   --color-success-highlight: #4ade80;
   --color-danger: #b42318;
   --color-danger-soft: rgb(180 35 24 / 10%);
+  --color-destructive: #b42318;
+  --color-destructive-strong: #8f1f16;
+  --color-destructive-soft: rgb(180 35 24 / 10%);
   --color-location: #2563eb;
   --color-nearby: #2f7d78;
   --color-nearby-strong: #245f5b;
@@ -100,16 +103,42 @@ body {
   width: min(1120px, calc(100% - 32px));
   min-height: 72px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.site-header__section {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  min-width: 0;
+}
+
+.site-header__section--leading {
+  justify-content: flex-start;
+}
+
+.site-header__section--center {
+  justify-content: center;
+}
+
+.site-header__section--trailing {
+  justify-content: flex-end;
 }
 
 .site-header__brand {
   font-weight: 800;
   letter-spacing: 0.01em;
   text-decoration: none;
+}
+
+.site-header__title {
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-align: center;
 }
 
 .site-header__nav {
@@ -144,6 +173,45 @@ body {
 .site-header__link--primary:focus-visible {
   border-color: transparent;
   background: var(--color-primary-strong);
+}
+
+.site-header__control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.site-header__control:hover:not(:disabled),
+.site-header__control:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--color-border);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.site-header__control:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.site-header__control--icon {
+  min-width: 42px;
+  padding: 0;
+}
+
+.site-header__control--text {
+  padding: 0 14px;
 }
 
 a {
@@ -268,7 +336,6 @@ img {
 }
 
 .hero-actions,
-.inline-actions,
 .map-toolbar,
 .canvas-summary {
   display: flex;
@@ -321,6 +388,18 @@ img {
   background: var(--color-surface-soft);
 }
 
+.button-destructive {
+  background: var(--color-destructive);
+  color: var(--color-foreground-inverse);
+  box-shadow: 0 12px 28px rgba(180, 35, 24, 0.2);
+}
+
+.button-destructive:hover:not(:disabled),
+.button-destructive:focus-visible:not(:disabled) {
+  border-color: transparent;
+  background: var(--color-destructive-strong);
+}
+
 .status-grid,
 .wall-grid,
 .guide-grid,
@@ -355,53 +434,6 @@ img {
 
 .section-card--muted {
   opacity: 0.62;
-}
-
-.registration-progress {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  gap: 8px;
-}
-
-.registration-progress__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 7px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.52);
-  color: var(--color-foreground-muted);
-}
-
-.registration-progress__item span {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: rgba(31, 26, 20, 0.08);
-  color: var(--color-foreground);
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.registration-progress__item strong {
-  font-size: 0.86rem;
-}
-
-.registration-progress__item.is-active {
-  border-color: rgba(182, 76, 45, 0.32);
-  background: rgba(255, 255, 255, 0.86);
-  color: var(--color-foreground);
-}
-
-.registration-progress__item.is-active span,
-.registration-progress__item.is-complete span {
-  background: var(--color-primary);
-  color: var(--color-foreground-inverse);
 }
 
 .registration-method-grid {
@@ -481,7 +513,6 @@ img {
   margin-bottom: 18px;
 }
 
-.step-badge,
 .metric-pill,
 .tag {
   display: inline-flex;
@@ -595,12 +626,6 @@ img {
   position: relative;
 }
 
-.editor-stage {
-  display: grid;
-  place-items: center;
-  padding: 16px;
-}
-
 .editor-surface {
   display: inline-block;
   position: relative;
@@ -649,16 +674,6 @@ img {
   padding: 18px;
 }
 
-.preview-image {
-  overflow: hidden;
-  border-radius: 18px;
-  background: var(--color-background);
-}
-
-.preview-image img {
-  width: 100%;
-}
-
 .scanner-shell {
   display: grid;
   gap: 16px;
@@ -668,8 +683,6 @@ img {
   position: relative;
   overflow: hidden;
   min-height: 360px;
-  border: 1px solid var(--color-border);
-  border-radius: 22px;
   background: var(--color-camera-backdrop);
 }
 
@@ -1481,6 +1494,53 @@ img {
   color: var(--color-danger);
 }
 
+.new-wall-registration-form {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(31, 26, 20, 0.38);
+  backdrop-filter: blur(6px);
+}
+
+.dialog {
+  display: grid;
+  gap: 20px;
+  width: min(420px, 100%);
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  background: var(--color-surface-strong);
+  box-shadow: var(--shadow-elevated);
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.35;
+}
+
+.dialog__description {
+  margin: 0;
+  color: var(--color-foreground-muted);
+  line-height: 1.7;
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-size: 0.9rem;
@@ -1779,6 +1839,10 @@ img {
     min-height: 64px;
   }
 
+  .site-header__title {
+    font-size: 0.95rem;
+  }
+
   .site-header__nav {
     display: none;
   }
@@ -1934,6 +1998,37 @@ img {
     line-height: 1.1;
   }
 
+  .registration-progress,
+  .new-wall-registration-form {
+    width: min(100% - 20px, 1120px);
+  }
+
+  .registration-progress {
+    margin-top: 12px;
+  }
+
+  .new-wall-registration-form {
+    padding-top: 18px;
+    padding-bottom: 28px;
+  }
+
+  .dialog-backdrop {
+    padding: 16px;
+  }
+
+  .dialog {
+    padding: 20px;
+    border-radius: 20px;
+  }
+
+  .dialog__actions {
+    flex-direction: column-reverse;
+  }
+
+  .dialog__actions .button {
+    width: 100%;
+  }
+
   .page-header,
   .section-topline {
     flex-direction: column;
@@ -1942,12 +2037,6 @@ img {
   .step-navigation {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .step-navigation > div,
-  .step-navigation .inline-actions,
-  .step-navigation .button {
-    width: 100%;
   }
 
   .registration-method-grid,
