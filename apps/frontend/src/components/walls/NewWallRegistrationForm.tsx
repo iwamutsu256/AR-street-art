@@ -1,23 +1,29 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
+import Link from "next/link";
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   CANVAS_MAX_SIZE,
   DEFAULT_CANVAS_SIZE,
   type CornerCoordinate,
   type CreateWallResponse,
-} from '@street-art/shared';
-import { CornerEditor } from './CornerEditor';
-import { LocationPicker } from './LocationPicker';
-import { WallScanner, type ScannedWallCapture } from './WallScanner';
+} from "@street-art/shared";
+import { CornerEditor } from "./CornerEditor";
+import { LocationPicker } from "./LocationPicker";
+import { WallScanner, type ScannedWallCapture } from "./WallScanner";
 import {
   buildAspectAdjustedRectifiedImageAsset,
   buildRectifiedImageAsset,
   buildWallImageFiles,
   inspectWallImage,
   type RectifiedImageAsset,
-} from '../../lib/wall-image';
+} from "../../lib/wall-image";
 import {
   CANVAS_MIN_SIZE,
   clamp,
@@ -25,14 +31,24 @@ import {
   getCanvasDimensions,
   getDefaultCornerCoordinates,
   serializeCornerCoordinates,
-} from '../../lib/walls';
+} from "../../lib/walls";
 
 const ASPECT_RATIO_MIN = 1 / 3;
 const ASPECT_RATIO_MAX = 3;
+const ASPECT_RATIO_SLIDER_MIN = 0;
+const ASPECT_RATIO_SLIDER_MAX = 100;
 const MAX_ORIGINAL_LONG_EDGE = 3840;
 
-type RegistrationMethod = 'scan' | 'upload';
-type WallStep = 'method' | 'scan' | 'upload' | 'region' | 'aspect' | 'canvas' | 'details' | 'review';
+type RegistrationMethod = "scan" | "upload";
+type WallStep =
+  | "method"
+  | "scan"
+  | "upload"
+  | "region"
+  | "aspect"
+  | "canvas"
+  | "details"
+  | "review";
 
 type SelectedImage = {
   file: File;
@@ -69,24 +85,24 @@ type StepNavigationProps = {
 };
 
 const initialValues: WallFormValues = {
-  name: '',
-  latitude: '',
-  longitude: '',
+  name: "",
+  latitude: "",
+  longitude: "",
 };
 
 const stepLabels: Record<WallStep, string> = {
-  method: '登録方法',
-  scan: 'スキャン',
-  upload: '画像選択',
-  region: '範囲確認',
-  aspect: '比率調整',
-  canvas: 'サイズ',
-  details: '名称と位置',
-  review: '確認',
+  method: "登録方法",
+  scan: "スキャン",
+  upload: "画像選択",
+  region: "範囲確認",
+  aspect: "比率調整",
+  canvas: "サイズ",
+  details: "名称と位置",
+  review: "確認",
 };
 
 function parseCoordinate(value: string, min: number, max: number) {
-  if (value.trim() === '') {
+  if (value.trim() === "") {
     return null;
   }
 
@@ -100,37 +116,50 @@ function parseCoordinate(value: string, min: number, max: number) {
 }
 
 function extractErrorMessages(payload: unknown) {
-  if (!payload || typeof payload !== 'object') {
-    return ['壁の登録に失敗しました。'];
+  if (!payload || typeof payload !== "object") {
+    return ["壁の登録に失敗しました。"];
   }
 
   const messages: string[] = [];
 
-  if ('errors' in payload && Array.isArray(payload.errors)) {
+  if ("errors" in payload && Array.isArray(payload.errors)) {
     for (const error of payload.errors) {
-      if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+      if (
+        error &&
+        typeof error === "object" &&
+        "message" in error &&
+        typeof error.message === "string"
+      ) {
         messages.push(error.message);
       }
     }
   }
 
-  if ('message' in payload && typeof payload.message === 'string') {
+  if ("message" in payload && typeof payload.message === "string") {
     messages.push(payload.message);
   }
 
-  return messages.length > 0 ? messages : ['壁の登録に失敗しました。'];
+  return messages.length > 0 ? messages : ["壁の登録に失敗しました。"];
 }
 
 function getStepFlow(method: RegistrationMethod | null): WallStep[] {
-  if (method === 'scan') {
-    return ['method', 'scan', 'region', 'canvas', 'details', 'review'];
+  if (method === "scan") {
+    return ["method", "scan", "region", "canvas", "details", "review"];
   }
 
-  if (method === 'upload') {
-    return ['method', 'upload', 'region', 'aspect', 'canvas', 'details', 'review'];
+  if (method === "upload") {
+    return [
+      "method",
+      "upload",
+      "region",
+      "aspect",
+      "canvas",
+      "details",
+      "review",
+    ];
   }
 
-  return ['method'];
+  return ["method"];
 }
 
 function formatAspectRatio(aspectRatio: number) {
@@ -141,13 +170,57 @@ function formatAspectRatio(aspectRatio: number) {
   return `1:${(1 / aspectRatio).toFixed(2)}`;
 }
 
+function getAspectRatioFromSliderValue(sliderValue: number) {
+  const safeSliderValue = clamp(
+    sliderValue,
+    ASPECT_RATIO_SLIDER_MIN,
+    ASPECT_RATIO_SLIDER_MAX,
+  );
+  const progress =
+    (safeSliderValue - ASPECT_RATIO_SLIDER_MIN) /
+    (ASPECT_RATIO_SLIDER_MAX - ASPECT_RATIO_SLIDER_MIN);
+  const logMin = Math.log(ASPECT_RATIO_MIN);
+  const logMax = Math.log(ASPECT_RATIO_MAX);
+
+  return Math.exp(logMin + (logMax - logMin) * progress);
+}
+
+function getAspectRatioSliderValue(aspectRatio: number) {
+  const safeAspectRatio = clamp(aspectRatio, ASPECT_RATIO_MIN, ASPECT_RATIO_MAX);
+  const logMin = Math.log(ASPECT_RATIO_MIN);
+  const logMax = Math.log(ASPECT_RATIO_MAX);
+  const progress = (Math.log(safeAspectRatio) - logMin) / (logMax - logMin);
+
+  return (
+    ASPECT_RATIO_SLIDER_MIN +
+    (ASPECT_RATIO_SLIDER_MAX - ASPECT_RATIO_SLIDER_MIN) * progress
+  );
+}
+
+function getAspectPreviewFrame(aspectRatio: number) {
+  const safeAspectRatio =
+    Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 1;
+
+  if (safeAspectRatio >= 1) {
+    return {
+      widthPercent: 100,
+      heightPercent: Math.max(1, Math.min(100, (1 / safeAspectRatio) * 100)),
+    };
+  }
+
+  return {
+    widthPercent: Math.max(1, Math.min(100, safeAspectRatio * 100)),
+    heightPercent: 100,
+  };
+}
+
 function StepNavigation({
-  backLabel = '戻る',
+  backLabel = "戻る",
   children,
   hideNext = false,
   nextBusy = false,
   nextDisabled = false,
-  nextLabel = '次へ',
+  nextLabel = "次へ",
   onBack,
   onNext,
 }: StepNavigationProps) {
@@ -155,7 +228,11 @@ function StepNavigation({
     <div className="step-navigation">
       <div>
         {onBack ? (
-          <button className="button button-secondary" onClick={onBack} type="button">
+          <button
+            className="button button-secondary"
+            onClick={onBack}
+            type="button"
+          >
             {backLabel}
           </button>
         ) : null}
@@ -169,7 +246,7 @@ function StepNavigation({
             onClick={() => void onNext?.()}
             type="button"
           >
-            {nextBusy ? '処理中…' : nextLabel}
+            {nextBusy ? "処理中…" : nextLabel}
           </button>
         )}
       </div>
@@ -177,13 +254,21 @@ function StepNavigation({
   );
 }
 
-export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationFormProps) {
+export function NewWallRegistrationForm({
+  mapTilerKey,
+}: NewWallRegistrationFormProps) {
   const [method, setMethod] = useState<RegistrationMethod | null>(null);
-  const [step, setStep] = useState<WallStep>('method');
-  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
-  const [rectifiedPreview, setRectifiedPreview] = useState<RectifiedPreview | null>(null);
-  const [aspectAdjustedPreview, setAspectAdjustedPreview] = useState<RectifiedPreview | null>(null);
-  const [corners, setCorners] = useState<CornerCoordinate[]>(getDefaultCornerCoordinates(1200, 800));
+  const [step, setStep] = useState<WallStep>("method");
+  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
+    null,
+  );
+  const [rectifiedPreview, setRectifiedPreview] =
+    useState<RectifiedPreview | null>(null);
+  const [aspectAdjustedPreview, setAspectAdjustedPreview] =
+    useState<RectifiedPreview | null>(null);
+  const [corners, setCorners] = useState<CornerCoordinate[]>(
+    getDefaultCornerCoordinates(1200, 800),
+  );
   const [canvasLongSide, setCanvasLongSide] = useState(DEFAULT_CANVAS_SIZE);
   const [aspectRatioValue, setAspectRatioValue] = useState(1);
   const [values, setValues] = useState<WallFormValues>(initialValues);
@@ -192,7 +277,9 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
   const [rectifyPhase, setRectifyPhase] = useState<string | null>(null);
   const [aspectPhase, setAspectPhase] = useState<string | null>(null);
   const [submitPhase, setSubmitPhase] = useState<string | null>(null);
-  const [scanLocationMessage, setScanLocationMessage] = useState<string | null>(null);
+  const [scanLocationMessage, setScanLocationMessage] = useState<string | null>(
+    null,
+  );
   const [success, setSuccess] = useState<CreateWallResponse | null>(null);
 
   useEffect(() => {
@@ -226,9 +313,16 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
   }, [aspectAdjustedPreview]);
 
   const effectiveRectifiedPreview =
-    method === 'upload' ? aspectAdjustedPreview ?? rectifiedPreview : rectifiedPreview;
+    method === "upload"
+      ? (aspectAdjustedPreview ?? rectifiedPreview)
+      : rectifiedPreview;
   const canvasAspectRatio = effectiveRectifiedPreview?.aspectRatio ?? 1;
-  const canvasDimensions = getCanvasDimensions(canvasLongSide, canvasAspectRatio);
+  const canvasDimensions = getCanvasDimensions(
+    canvasLongSide,
+    canvasAspectRatio,
+  );
+  const aspectRatioSliderValue = getAspectRatioSliderValue(aspectRatioValue);
+  const aspectPreviewFrame = getAspectPreviewFrame(aspectRatioValue);
   const latitude = parseCoordinate(values.latitude, -90, 90);
   const longitude = parseCoordinate(values.longitude, -180, 180);
   const stepFlow = getStepFlow(method);
@@ -287,17 +381,17 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
   async function handleNext() {
     setMessages([]);
 
-    if (step === 'upload' && !selectedImage) {
-      setMessages(['壁画像をアップロードしてください。']);
+    if (step === "upload" && !selectedImage) {
+      setMessages(["壁画像をアップロードしてください。"]);
       return;
     }
 
-    if (step === 'region' && !rectifiedPreview) {
-      setMessages(['キャンバス範囲を確定し、rectified を生成してください。']);
+    if (step === "region" && !rectifiedPreview) {
+      setMessages(["キャンバス範囲を確定し、rectified を生成してください。"]);
       return;
     }
 
-    if (step === 'aspect') {
+    if (step === "aspect") {
       const confirmed = await confirmAspectRatio();
 
       if (!confirmed) {
@@ -305,14 +399,14 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       }
     }
 
-    if (step === 'details') {
+    if (step === "details") {
       if (values.name.trim().length === 0) {
-        setMessages(['壁の名称を入力してください。']);
+        setMessages(["壁の名称を入力してください。"]);
         return;
       }
 
       if (latitude === null || longitude === null) {
-        setMessages(['緯度・経度を正しく入力してください。']);
+        setMessages(["緯度・経度を正しく入力してください。"]);
         return;
       }
     }
@@ -343,8 +437,11 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       if (inspection.errors.length > 0) {
         setSelectedImage(null);
         setCorners(getDefaultCornerCoordinates(1200, 800));
-        setUploadIssues([...inspection.errors, '別のファイルをアップロードしてください。']);
-        event.currentTarget.value = '';
+        setUploadIssues([
+          ...inspection.errors,
+          "別のファイルをアップロードしてください。",
+        ]);
+        event.currentTarget.value = "";
         return;
       }
 
@@ -352,31 +449,40 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       setSelectedImage({
         file,
         previewUrl: nextPreviewUrl,
-        source: 'upload',
+        source: "upload",
         width: inspection.metadata.width,
         height: inspection.metadata.height,
         willDownscaleOriginal: inspection.metadata.willDownscaleOriginal,
       });
-      setCorners(getDefaultCornerCoordinates(inspection.metadata.width, inspection.metadata.height));
+      setCorners(
+        getDefaultCornerCoordinates(
+          inspection.metadata.width,
+          inspection.metadata.height,
+        ),
+      );
       setCanvasLongSide(DEFAULT_CANVAS_SIZE);
       setAspectRatioValue(inspection.metadata.aspectRatio);
     } catch (error) {
       setSelectedImage(null);
       setUploadIssues([
-        error instanceof Error ? error.message : '画像の読み込みに失敗しました。',
-        '別のファイルをアップロードしてください。',
+        error instanceof Error
+          ? error.message
+          : "画像の読み込みに失敗しました。",
+        "別のファイルをアップロードしてください。",
       ]);
-      event.currentTarget.value = '';
+      event.currentTarget.value = "";
     }
   }
 
   function fillLocationFromScan() {
     if (!navigator.geolocation) {
-      setScanLocationMessage('位置情報を取得できませんでした。緯度・経度を入力してください。');
+      setScanLocationMessage(
+        "位置情報を取得できませんでした。緯度・経度を入力してください。",
+      );
       return;
     }
 
-    setScanLocationMessage('スキャン完了時の位置情報を取得しています。');
+    setScanLocationMessage("スキャン完了時の位置情報を取得しています。");
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setValues((current) => ({
@@ -384,23 +490,25 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           latitude: formatCoordinate(position.coords.latitude),
           longitude: formatCoordinate(position.coords.longitude),
         }));
-        setScanLocationMessage('スキャン完了時の位置情報を自動入力しました。');
+        setScanLocationMessage("スキャン完了時の位置情報を自動入力しました。");
       },
       () => {
-        setScanLocationMessage('位置情報を取得できませんでした。緯度・経度を入力してください。');
+        setScanLocationMessage(
+          "位置情報を取得できませんでした。緯度・経度を入力してください。",
+        );
       },
       {
         enableHighAccuracy: true,
         maximumAge: 0,
         timeout: 10000,
-      }
+      },
     );
   }
 
   function handleScanCapture(capture: ScannedWallCapture) {
     const nextPreviewUrl = URL.createObjectURL(capture.file);
 
-    setMethod('scan');
+    setMethod("scan");
     setMessages([]);
     setUploadIssues([]);
     setSuccess(null);
@@ -412,15 +520,16 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
     setSelectedImage({
       file: capture.file,
       previewUrl: nextPreviewUrl,
-      source: 'scan',
+      source: "scan",
       width: capture.width,
       height: capture.height,
-      willDownscaleOriginal: Math.max(capture.width, capture.height) > MAX_ORIGINAL_LONG_EDGE,
+      willDownscaleOriginal:
+        Math.max(capture.width, capture.height) > MAX_ORIGINAL_LONG_EDGE,
     });
     setCorners(capture.corners);
     setCanvasLongSide(DEFAULT_CANVAS_SIZE);
     setAspectRatioValue(capture.width / capture.height);
-    setStep('region');
+    setStep("region");
     fillLocationFromScan();
   }
 
@@ -438,13 +547,13 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
 
   async function handleGenerateRectified() {
     if (!selectedImage) {
-      setMessages(['先に壁画像を用意してください。']);
+      setMessages(["先に壁画像を用意してください。"]);
       return;
     }
 
     setMessages([]);
     setAspectAdjustedPreview(null);
-    setRectifyPhase('rectified を生成しています。');
+    setRectifyPhase("rectified を生成しています。");
 
     try {
       const nextRectifiedAsset = await buildRectifiedImageAsset({
@@ -456,11 +565,19 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
         ...nextRectifiedAsset,
         previewUrl: URL.createObjectURL(nextRectifiedAsset.rectifiedImageFile),
       });
-      setAspectRatioValue(clamp(nextRectifiedAsset.aspectRatio, ASPECT_RATIO_MIN, ASPECT_RATIO_MAX));
+      setAspectRatioValue(
+        clamp(
+          nextRectifiedAsset.aspectRatio,
+          ASPECT_RATIO_MIN,
+          ASPECT_RATIO_MAX,
+        ),
+      );
       setRectifyPhase(null);
     } catch (error) {
       setMessages([
-        error instanceof Error ? error.message : 'rectified の生成に失敗しました。',
+        error instanceof Error
+          ? error.message
+          : "rectified の生成に失敗しました。",
       ]);
       setRectifyPhase(null);
     }
@@ -473,7 +590,7 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
 
   async function confirmAspectRatio() {
     if (!rectifiedPreview) {
-      setMessages(['先に rectified を生成してください。']);
+      setMessages(["先に rectified を生成してください。"]);
       return false;
     }
 
@@ -489,7 +606,7 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       return true;
     }
 
-    setAspectPhase('調整後の rectified を生成しています。');
+    setAspectPhase("調整後の rectified を生成しています。");
 
     try {
       const nextAdjustedAsset = await buildAspectAdjustedRectifiedImageAsset({
@@ -505,7 +622,9 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       return true;
     } catch (error) {
       setMessages([
-        error instanceof Error ? error.message : 'アスペクト比の調整に失敗しました。',
+        error instanceof Error
+          ? error.message
+          : "アスペクト比の調整に失敗しました。",
       ]);
       setAspectPhase(null);
       return false;
@@ -515,28 +634,28 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (step !== 'review') {
+    if (step !== "review") {
       return;
     }
 
     if (!selectedImage) {
-      setMessages(['壁画像を用意してください。']);
+      setMessages(["壁画像を用意してください。"]);
       return;
     }
 
     if (!effectiveRectifiedPreview) {
-      setMessages(['rectified を生成してください。']);
+      setMessages(["rectified を生成してください。"]);
       return;
     }
 
     if (latitude === null || longitude === null) {
-      setMessages(['緯度・経度を正しく入力してください。']);
+      setMessages(["緯度・経度を正しく入力してください。"]);
       return;
     }
 
     setMessages([]);
     setSuccess(null);
-    setSubmitPhase('Original と Thumbnail を生成しています。');
+    setSubmitPhase("Original と Thumbnail を生成しています。");
 
     try {
       const processedImages = await buildWallImageFiles({
@@ -545,28 +664,35 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       });
 
       const formData = new FormData();
-      formData.set('name', values.name.trim());
-      formData.set('latitude', String(latitude));
-      formData.set('longitude', String(longitude));
-      formData.set('canvasWidth', String(canvasDimensions.width));
-      formData.set('canvasHeight', String(canvasDimensions.height));
-      formData.set('cornerCoordinates', JSON.stringify(serializeCornerCoordinates(corners)));
-      formData.set('originalImageFile', processedImages.originalImageFile, processedImages.originalImageFile.name);
+      formData.set("name", values.name.trim());
+      formData.set("latitude", String(latitude));
+      formData.set("longitude", String(longitude));
+      formData.set("canvasWidth", String(canvasDimensions.width));
+      formData.set("canvasHeight", String(canvasDimensions.height));
       formData.set(
-        'thumbnailImageFile',
+        "cornerCoordinates",
+        JSON.stringify(serializeCornerCoordinates(corners)),
+      );
+      formData.set(
+        "originalImageFile",
+        processedImages.originalImageFile,
+        processedImages.originalImageFile.name,
+      );
+      formData.set(
+        "thumbnailImageFile",
         processedImages.thumbnailImageFile,
-        processedImages.thumbnailImageFile.name
+        processedImages.thumbnailImageFile.name,
       );
       formData.set(
-        'rectifiedImageFile',
+        "rectifiedImageFile",
         processedImages.rectifiedImageFile,
-        processedImages.rectifiedImageFile.name
+        processedImages.rectifiedImageFile.name,
       );
 
-      setSubmitPhase('API に送信しています。');
+      setSubmitPhase("API に送信しています。");
 
-      const response = await fetch('/api/walls', {
-        method: 'POST',
+      const response = await fetch("/api/walls", {
+        method: "POST",
         body: formData,
       });
       const payload = (await response.json().catch(() => null)) as unknown;
@@ -581,7 +707,9 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       setSubmitPhase(null);
     } catch (error) {
       setMessages([
-        error instanceof Error ? error.message : '画像処理またはアップロードに失敗しました。',
+        error instanceof Error
+          ? error.message
+          : "画像処理またはアップロードに失敗しました。",
       ]);
       setSubmitPhase(null);
     }
@@ -592,8 +720,8 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       {stepFlow.map((flowStep, index) => (
         <div
           className={`registration-progress__item${
-            index === currentStepIndex ? ' is-active' : ''
-          }${index < currentStepIndex ? ' is-complete' : ''}`}
+            index === currentStepIndex ? " is-active" : ""
+          }${index < currentStepIndex ? " is-complete" : ""}`}
           key={flowStep}
         >
           <span>{index + 1}</span>
@@ -616,8 +744,16 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       </div>
 
       <div className="registration-method-grid">
-        <button className="method-button" onClick={() => beginRegistration('scan')} type="button">
-          <svg aria-hidden="true" className="method-button__icon" viewBox="0 0 24 24">
+        <button
+          className="method-button"
+          onClick={() => beginRegistration("scan")}
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            className="method-button__icon"
+            viewBox="0 0 24 24"
+          >
             <path d="M4 7.5h3.1L8.7 5h6.6l1.6 2.5H20a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Zm8 9a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-1.6a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8Z" />
           </svg>
           <span>
@@ -626,8 +762,16 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           </span>
         </button>
 
-        <button className="method-button" onClick={() => beginRegistration('upload')} type="button">
-          <svg aria-hidden="true" className="method-button__icon" viewBox="0 0 24 24">
+        <button
+          className="method-button"
+          onClick={() => beginRegistration("upload")}
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            className="method-button__icon"
+            viewBox="0 0 24 24"
+          >
             <path d="M11 16.2V7.6l-3 3-1.4-1.4L12 3.8l5.4 5.4-1.4 1.4-3-3v8.6h-2ZM5 20.2a3 3 0 0 1-3-3v-2.4h2v2.4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2.4h2v2.4a3 3 0 0 1-3 3H5Z" />
           </svg>
           <span>
@@ -684,7 +828,11 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           </div>
           <div className="metric-pill">
             <strong>Original 保存</strong>
-            <span>{selectedImage.willDownscaleOriginal ? '3840px 以内へ縮小' : 'そのまま JPEG 化'}</span>
+            <span>
+              {selectedImage.willDownscaleOriginal
+                ? "3840px 以内へ縮小"
+                : "そのまま JPEG 化"}
+            </span>
           </div>
           <div className="metric-pill">
             <strong>Thumbnail</strong>
@@ -716,10 +864,7 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
 
       <WallScanner onCapture={handleScanCapture} />
 
-      <StepNavigation
-        hideNext
-        onBack={goBack}
-      />
+      <StepNavigation hideNext onBack={goBack} />
     </section>
   );
 
@@ -738,7 +883,11 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       {selectedImage ? (
         <div className="stack-md">
           <CornerEditor
-            imageAlt={selectedImage.source === 'scan' ? 'スキャンした壁画像' : 'アップロードした壁画像'}
+            imageAlt={
+              selectedImage.source === "scan"
+                ? "スキャンした壁画像"
+                : "アップロードした壁画像"
+            }
             imageHeight={selectedImage.height}
             imageUrl={selectedImage.previewUrl}
             imageWidth={selectedImage.width}
@@ -754,10 +903,10 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
               type="button"
             >
               {rectifyPhase
-                ? 'rectified 生成中…'
+                ? "rectified 生成中…"
                 : rectifiedPreview
-                  ? 'rectified を再生成'
-                  : 'ハンドル位置を確定して rectified を生成'}
+                  ? "rectified を再生成"
+                  : "ハンドル位置を確定して rectified を生成"}
             </button>
             {rectifiedPreview ? (
               <div className="metric-pill">
@@ -777,15 +926,22 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
             <div className="preview-frame">
               <div className="preview-image">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={rectifiedPreview.previewUrl} alt="生成した rectified プレビュー" />
+                <img
+                  src={rectifiedPreview.previewUrl}
+                  alt="生成した rectified プレビュー"
+                />
               </div>
               <div className="notice">
-                rectified を生成しました。{method === 'upload' ? '次に比率を調整します。' : '次にキャンバスサイズを決めます。'}
+                rectified を生成しました。
+                {method === "upload"
+                  ? "次に比率を調整します。"
+                  : "次にキャンバスサイズを決めます。"}
               </div>
             </div>
           ) : (
             <div className="notice">
-              ハンドル位置を確認したら「ハンドル位置を確定して rectified を生成」を押してください。
+              ハンドル位置を確認したら「ハンドル位置を確定して rectified
+              を生成」を押してください。
             </div>
           )}
         </div>
@@ -795,7 +951,7 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
 
       <StepNavigation
         nextDisabled={!rectifiedPreview || Boolean(rectifyPhase)}
-        nextLabel={method === 'upload' ? '比率調整へ' : 'サイズ選択へ'}
+        nextLabel={method === "upload" ? "比率調整へ" : "サイズ選択へ"}
         onBack={goBack}
         onNext={handleNext}
       />
@@ -809,7 +965,8 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <div className="step-badge">Step {currentStepIndex + 1}</div>
           <h2 className="section-title">アスペクト比を調整</h2>
           <p className="section-copy">
-            射影変換だけでは復元しきれない元の比率を、1:3 から 3:1 の範囲で補正します。
+            射影変換だけでは復元しきれない元の比率を、1:3 から 3:1
+            の範囲で補正します。
           </p>
         </div>
         <div className="metric-pill">
@@ -821,37 +978,53 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       {rectifiedPreview ? (
         <div className="aspect-adjuster">
           <div className="aspect-preview-shell">
-            <div
-              className="aspect-preview"
-              style={{ aspectRatio: `${aspectRatioValue} / 1` }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="aspect-preview__image"
-                src={rectifiedPreview.previewUrl}
-                alt="比率調整中の rectified プレビュー"
-              />
+            <div className="aspect-preview-stage">
+              <div
+                className="aspect-preview"
+                style={{
+                  width: `${aspectPreviewFrame.widthPercent}%`,
+                  height: `${aspectPreviewFrame.heightPercent}%`,
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  className="aspect-preview__image"
+                  src={rectifiedPreview.previewUrl}
+                  alt="比率調整中の rectified プレビュー"
+                />
+              </div>
             </div>
           </div>
 
           <div className="stack-md">
-            <label className="field-label">
+            <label className="">
               比率 {formatAspectRatio(aspectRatioValue)}
               <input
                 className="range-input"
-                max={ASPECT_RATIO_MAX}
-                min={ASPECT_RATIO_MIN}
-                onChange={(event) => handleAspectRatioChange(Number(event.target.value))}
-                step="0.01"
+                max={ASPECT_RATIO_SLIDER_MAX}
+                min={ASPECT_RATIO_SLIDER_MIN}
+                onChange={(event) =>
+                  handleAspectRatioChange(
+                    getAspectRatioFromSliderValue(Number(event.target.value)),
+                  )
+                }
+                step="0.1"
                 type="range"
-                value={aspectRatioValue}
+                value={aspectRatioSliderValue}
               />
             </label>
+            <div className="range-labels" aria-hidden="true">
+              <span>{formatAspectRatio(ASPECT_RATIO_MIN)}</span>
+              <span>1.00:1</span>
+              <span>{formatAspectRatio(ASPECT_RATIO_MAX)}</span>
+            </div>
 
             <div className="inline-actions">
               <button
                 className="button button-secondary"
-                onClick={() => handleAspectRatioChange(rectifiedPreview.aspectRatio)}
+                onClick={() =>
+                  handleAspectRatioChange(rectifiedPreview.aspectRatio)
+                }
                 type="button"
               >
                 生成時の比率へ戻す
@@ -866,7 +1039,8 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
             {aspectAdjustedPreview ? (
               <div className="notice">
                 調整後の rectified を生成しました。
-                {aspectAdjustedPreview.width} x {aspectAdjustedPreview.height}px を次のステップで使います。
+                {aspectAdjustedPreview.width} x {aspectAdjustedPreview.height}px
+                を次のステップで使います。
               </div>
             ) : null}
           </div>
@@ -892,10 +1066,15 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <div className="step-badge">Step {currentStepIndex + 1}</div>
           <h2 className="section-title">キャンバスサイズを決める</h2>
           <p className="section-copy">
-            スライダーは長辺のピクセル数です。rectified のアスペクト比を基準に短辺を自動計算します。
+            スライダーは長辺のピクセル数です。rectified
+            のアスペクト比を基準に短辺を自動計算します。
           </p>
         </div>
-        <Link className="button button-secondary" href="/canvas-size-guide" target="_blank">
+        <Link
+          className="button button-secondary"
+          href="/canvas-size-guide"
+          target="_blank"
+        >
           サイズガイドを開く
         </Link>
       </div>
@@ -908,7 +1087,9 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
               className="range-input"
               max={CANVAS_MAX_SIZE}
               min={CANVAS_MIN_SIZE}
-              onChange={(event) => setCanvasLongSide(Number(event.target.value))}
+              onChange={(event) =>
+                setCanvasLongSide(Number(event.target.value))
+              }
               type="range"
               value={canvasLongSide}
             />
@@ -925,16 +1106,17 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
               <strong>比率</strong>
               <span>
                 {canvasDimensions.width / canvasDimensions.height > 1
-                  ? '横長'
+                  ? "横長"
                   : canvasDimensions.width === canvasDimensions.height
-                    ? '正方形'
-                    : '縦長'}
+                    ? "正方形"
+                    : "縦長"}
               </span>
             </div>
             <div className="metric-pill">
               <strong>Rectified 基準</strong>
               <span>
-                {effectiveRectifiedPreview.width} x {effectiveRectifiedPreview.height}px
+                {effectiveRectifiedPreview.width} x{" "}
+                {effectiveRectifiedPreview.height}px
               </span>
             </div>
           </div>
@@ -942,12 +1124,17 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <div className="preview-frame">
             <div className="preview-image">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={effectiveRectifiedPreview.previewUrl} alt="rectified プレビュー" />
+              <img
+                src={effectiveRectifiedPreview.previewUrl}
+                alt="rectified プレビュー"
+              />
             </div>
             <div className="canvas-proportion">
               <div
                 className="canvas-proportion__shape"
-                style={{ aspectRatio: `${canvasDimensions.width} / ${canvasDimensions.height}` }}
+                style={{
+                  aspectRatio: `${canvasDimensions.width} / ${canvasDimensions.height}`,
+                }}
               >
                 {canvasDimensions.width} x {canvasDimensions.height}
               </div>
@@ -979,13 +1166,17 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
         </div>
       </div>
 
-      {scanLocationMessage ? <div className="notice">{scanLocationMessage}</div> : null}
+      {scanLocationMessage ? (
+        <div className="notice">{scanLocationMessage}</div>
+      ) : null}
 
       <div className="field-grid field-grid--two" style={{ marginBottom: 16 }}>
         <label className="field-label">
           壁の名称
           <input
-            onChange={(event) => setValues((current) => ({ ...current, name: event.target.value }))}
+            onChange={(event) =>
+              setValues((current) => ({ ...current, name: event.target.value }))
+            }
             placeholder="例: Tokyo Station Demo Wall"
             value={values.name}
           />
@@ -1002,7 +1193,10 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <input
             inputMode="decimal"
             onChange={(event) =>
-              setValues((current) => ({ ...current, latitude: event.target.value }))
+              setValues((current) => ({
+                ...current,
+                latitude: event.target.value,
+              }))
             }
             placeholder="35.680959"
             value={values.latitude}
@@ -1013,7 +1207,10 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <input
             inputMode="decimal"
             onChange={(event) =>
-              setValues((current) => ({ ...current, longitude: event.target.value }))
+              setValues((current) => ({
+                ...current,
+                longitude: event.target.value,
+              }))
             }
             placeholder="139.767307"
             value={values.longitude}
@@ -1041,7 +1238,11 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       />
 
       <StepNavigation
-        nextDisabled={values.name.trim().length === 0 || latitude === null || longitude === null}
+        nextDisabled={
+          values.name.trim().length === 0 ||
+          latitude === null ||
+          longitude === null
+        }
         nextLabel="内容確認へ"
         onBack={goBack}
         onNext={handleNext}
@@ -1056,8 +1257,8 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <div className="step-badge">Finish</div>
           <h2 className="section-title">登録内容を送信</h2>
           <p className="section-copy">
-            API には既存の <span className="mono">POST /api/walls</span> を使い、フロント側で整えた
-            3種類の画像を multipart で送ります。
+            API には既存の <span className="mono">POST /api/walls</span>{" "}
+            を使い、フロント側で整えた 3種類の画像を multipart で送ります。
           </p>
         </div>
       </div>
@@ -1065,7 +1266,7 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       <div className="info-grid" style={{ marginBottom: 16 }}>
         <div className="metric-pill">
           <strong>登録方法</strong>
-          <span>{method === 'scan' ? 'スキャン' : '画像アップロード'}</span>
+          <span>{method === "scan" ? "スキャン" : "画像アップロード"}</span>
         </div>
         <div className="metric-pill">
           <strong>壁名</strong>
@@ -1076,7 +1277,7 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <span>
             {latitude !== null && longitude !== null
               ? `${formatCoordinate(latitude)}, ${formatCoordinate(longitude)}`
-              : '未設定'}
+              : "未設定"}
           </span>
         </div>
         <div className="metric-pill">
@@ -1090,7 +1291,7 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <span>
             {effectiveRectifiedPreview
               ? `${effectiveRectifiedPreview.width} x ${effectiveRectifiedPreview.height}px`
-              : '未生成'}
+              : "未生成"}
           </span>
         </div>
       </div>
@@ -1098,12 +1299,20 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
       {submitPhase ? <div className="notice">{submitPhase}</div> : null}
 
       <div className="step-navigation">
-        <button className="button button-secondary" onClick={goBack} type="button">
+        <button
+          className="button button-secondary"
+          onClick={goBack}
+          type="button"
+        >
           戻る
         </button>
         <div className="inline-actions">
-          <button className="button button-primary" disabled={!canSubmit} type="submit">
-            {submitPhase ? '送信中…' : '壁を登録する'}
+          <button
+            className="button button-primary"
+            disabled={!canSubmit}
+            type="submit"
+          >
+            {submitPhase ? "送信中…" : "壁を登録する"}
           </button>
           <Link className="button button-secondary" href="/">
             一覧へ戻る
@@ -1120,11 +1329,15 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
           <strong>{success.name} を登録しました。</strong>
           <div className="stack-sm" style={{ marginTop: 8 }}>
             <div>
-              キャンバスサイズ: {success.canvas?.width} x {success.canvas?.height}px
+              キャンバスサイズ: {success.canvas?.width} x{" "}
+              {success.canvas?.height}px
             </div>
             <div className="mono">Wall ID: {success.id}</div>
             <div className="inline-actions">
-              <Link className="button button-primary" href={`/walls/${success.id}`}>
+              <Link
+                className="button button-primary"
+                href={`/walls/${success.id}`}
+              >
                 壁詳細へ
               </Link>
               <Link className="button button-secondary" href="/">
@@ -1148,14 +1361,14 @@ export function NewWallRegistrationForm({ mapTilerKey }: NewWallRegistrationForm
             </div>
           ) : null}
 
-          {step === 'method' ? renderMethodStep() : null}
-          {step === 'scan' ? renderScanStep() : null}
-          {step === 'upload' ? renderUploadStep() : null}
-          {step === 'region' ? renderRegionStep() : null}
-          {step === 'aspect' ? renderAspectStep() : null}
-          {step === 'canvas' ? renderCanvasStep() : null}
-          {step === 'details' ? renderDetailsStep() : null}
-          {step === 'review' ? renderReviewStep() : null}
+          {step === "method" ? renderMethodStep() : null}
+          {step === "scan" ? renderScanStep() : null}
+          {step === "upload" ? renderUploadStep() : null}
+          {step === "region" ? renderRegionStep() : null}
+          {step === "aspect" ? renderAspectStep() : null}
+          {step === "canvas" ? renderCanvasStep() : null}
+          {step === "details" ? renderDetailsStep() : null}
+          {step === "review" ? renderReviewStep() : null}
         </>
       )}
     </form>

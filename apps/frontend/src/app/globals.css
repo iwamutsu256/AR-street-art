@@ -737,32 +737,43 @@ img {
   display: grid;
   place-items: center;
   min-height: 320px;
-  padding: 20px;
-  border: 1px solid var(--color-border);
-  border-radius: 22px;
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.7) 0,
-    rgba(255, 255, 255, 0.7) 12px,
-    rgba(239, 229, 212, 0.72) 12px,
-    rgba(239, 229, 212, 0.72) 24px
-  );
+}
+
+.aspect-preview-stage {
+  display: grid;
+  place-items: center;
+  width: min(100%, 440px);
+  max-width: 100%;
+  aspect-ratio: 1;
 }
 
 .aspect-preview {
   overflow: hidden;
-  height: min(52vh, 440px);
   max-width: 100%;
+  max-height: 100%;
+  justify-self: center;
   border: 1px solid var(--color-border-strong);
-  border-radius: 18px;
   background: var(--color-background);
   box-shadow: 0 18px 42px rgba(31, 26, 20, 0.16);
+  transition:
+    width 160ms ease,
+    height 160ms ease;
 }
 
 .aspect-preview__image {
   width: 100%;
   height: 100%;
   object-fit: fill;
+  display: block;
+}
+
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-foreground-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .canvas-proportion {
