@@ -28,6 +28,14 @@ const appChromeRules: AppChromeRule[] = [
       showGlobalHeader: false,
     },
   },
+  {
+    matches: matchPathPrefix("/canvases"),
+    settings: {
+      showBottomNavigation: false,
+      showGlobalHeader: false,
+      showNearbyWallBanner: false,
+    },
+  },
 ];
 
 export function getAppChromeSettings(pathname: string): AppChromeSettings {

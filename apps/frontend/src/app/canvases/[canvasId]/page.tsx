@@ -62,7 +62,7 @@ export default async function CanvasPage({ params }: CanvasPageProps) {
     <main className="page-shell page-shell--editor">
       <CanvasEditor
         initialSnapshot={snapshot}
-        leaveHref={wall ? `/walls/${wall.id}` : '/'}
+        leaveHref={`/?focusWallId=${encodeURIComponent(snapshot.wallId)}`}
         referenceImageUrl={wall?.rectifiedImageUrl}
         wallName={wall?.name}
         wsBase={getCanvasWsBase()}

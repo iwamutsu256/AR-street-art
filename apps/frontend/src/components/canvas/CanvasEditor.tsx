@@ -2,8 +2,14 @@
 
 import Link from "next/link";
 import {
-  useEffect,
+  ArrowLeft,
+  Info,
+  Palette,
+} from "@phosphor-icons/react";
+import {
   useCallback,
+  useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -14,6 +20,7 @@ import {
   TRANSPARENT_PIXEL_VALUE,
   type CanvasSnapshot,
 } from "@street-art/shared";
+import { AppHeader } from "../AppHeader";
 import { decodeBase64Pixels, getCanvasWebSocketUrl } from "../../lib/canvas";
 
 type CanvasEditorProps = {
@@ -25,10 +32,34 @@ type CanvasEditorProps = {
 };
 
 type ConnectionState = "connecting" | "open" | "closed" | "error";
+type PopoverKind = "palette" | "info" | null;
+type PixelPoint = { x: number; y: number };
+type PointerPosition = { x: number; y: number };
+type PinchGesture = {
+  contentLeft: number;
+  contentTop: number;
+  contentX: number;
+  contentY: number;
+  stageHeight: number;
+  stageWidth: number;
+  startDistance: number;
+  startZoom: number;
+};
+
+const MOBILE_LAYOUT_MAX = 720;
+const MOBILE_LAYOUT_QUERY = "(max-width: 720px)";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 
 function getInitialZoom(width: number, height: number) {
   const longestEdge = Math.max(width, height);
   return Math.max(2, Math.min(12, Math.round(448 / longestEdge)));
+}
+
+function getInitialCursorPixel(width: number, height: number): PixelPoint {
+  return {
+    x: Math.floor((width - 1) / 2),
+    y: Math.floor((height - 1) / 2),
+  };
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -102,11 +133,8 @@ function drawSnapshotToCanvas(
   context.putImageData(imageData, 0, 0);
 }
 
-function getLinePixels(
-  from: { x: number; y: number },
-  to: { x: number; y: number },
-) {
-  const pixels: Array<{ x: number; y: number }> = [];
+function getLinePixels(from: PixelPoint, to: PixelPoint) {
+  const pixels: PixelPoint[] = [];
   const deltaX = Math.abs(to.x - from.x);
   const deltaY = Math.abs(to.y - from.y);
   const stepX = from.x < to.x ? 1 : -1;
@@ -136,6 +164,37 @@ function getLinePixels(
   }
 }
 
+function getMidpoint(first: PointerPosition, second: PointerPosition) {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
+function getDistance(first: PointerPosition, second: PointerPosition) {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function shouldUseMobileCanvasLayout() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const narrowViewport =
+    window.matchMedia(MOBILE_LAYOUT_QUERY).matches ||
+    (window.visualViewport?.width ?? window.innerWidth) <= MOBILE_LAYOUT_MAX;
+  const shortestScreenEdge = Math.min(window.screen.width, window.screen.height);
+  const narrowScreen =
+    Number.isFinite(shortestScreenEdge) &&
+    shortestScreenEdge > 0 &&
+    shortestScreenEdge <= MOBILE_LAYOUT_MAX;
+  const hasCoarsePointer =
+    window.matchMedia(COARSE_POINTER_QUERY).matches ||
+    navigator.maxTouchPoints > 0;
+
+  return narrowViewport || (hasCoarsePointer && narrowScreen);
+}
+
 export function CanvasEditor({
   initialSnapshot,
   wallName,
@@ -143,11 +202,15 @@ export function CanvasEditor({
   leaveHref,
   referenceImageUrl,
 }: CanvasEditorProps) {
+  const editorRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const minimapFrameRef = useRef<HTMLDivElement>(null);
-  const dirtyPixelsRef = useRef<Array<{ x: number; y: number; color: number }>>([]);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const dirtyPixelsRef = useRef<Array<{ x: number; y: number; color: number }>>(
+    [],
+  );
   const redrawQueuedRef = useRef(false);
   const socketRef = useRef<WebSocket | null>(null);
   const pixelsRef = useRef(
@@ -166,7 +229,23 @@ export function CanvasEditor({
     panX: number;
     panY: number;
   } | null>(null);
-  const lastPointerPixelRef = useRef<{ x: number; y: number } | null>(null);
+  const lastPointerPixelRef = useRef<PixelPoint | null>(null);
+  const cursorPixelRef = useRef(
+    getInitialCursorPixel(initialSnapshot.width, initialSnapshot.height),
+  );
+  const cursorFloatRef = useRef({
+    x: cursorPixelRef.current.x,
+    y: cursorPixelRef.current.y,
+  });
+  const activePointersRef = useRef<Map<number, PointerPosition>>(new Map());
+  const singleTouchRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const pinchGestureRef = useRef<PinchGesture | null>(null);
+  const paintButtonPressedRef = useRef(false);
+  const ignoreNextPaintClickRef = useRef(false);
 
   const [selectedColor, setSelectedColor] = useState(() =>
     getDefaultSelectedColor(initialSnapshot.palette.length),
@@ -182,10 +261,6 @@ export function CanvasEditor({
   const [spacePressed, setSpacePressed] = useState(false);
   const [statusMessage, setStatusMessage] =
     useState("キャンバスに接続しています。");
-  const [hoveredPixel, setHoveredPixel] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
   const [viewportFrame, setViewportFrame] = useState({
     left: 0,
     top: 0,
@@ -206,6 +281,13 @@ export function CanvasEditor({
       height: initialSnapshot.height * initialZoom,
     };
   });
+  const [cursorPixel, setCursorPixel] = useState<PixelPoint>(
+    cursorPixelRef.current,
+  );
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [openPopover, setOpenPopover] = useState<PopoverKind>(null);
+  const [paintButtonPressed, setPaintButtonPressed] = useState(false);
+  const [isTouchNavigating, setIsTouchNavigating] = useState(false);
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -214,6 +296,14 @@ export function CanvasEditor({
   useEffect(() => {
     panRef.current = pan;
   }, [pan]);
+
+  useEffect(() => {
+    cursorPixelRef.current = cursorPixel;
+  }, [cursorPixel]);
+
+  useEffect(() => {
+    paintButtonPressedRef.current = paintButtonPressed;
+  }, [paintButtonPressed]);
 
   useEffect(() => {
     setSelectedColor((current) => {
@@ -225,48 +315,97 @@ export function CanvasEditor({
     });
   }, [palette]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncLayout = () => {
+      const nextIsMobile = shouldUseMobileCanvasLayout();
+      setIsMobileLayout(nextIsMobile);
+
+      if (!nextIsMobile) {
+        setOpenPopover(null);
+        setPaintButtonPressed(false);
+        activePointersRef.current.clear();
+        singleTouchRef.current = null;
+        pinchGestureRef.current = null;
+        setIsTouchNavigating(false);
+      }
+    };
+
+    syncLayout();
+    window.addEventListener("resize", syncLayout);
+    window.addEventListener("orientationchange", syncLayout);
+    window.visualViewport?.addEventListener("resize", syncLayout);
+
+    return () => {
+      window.removeEventListener("resize", syncLayout);
+      window.removeEventListener("orientationchange", syncLayout);
+      window.visualViewport?.removeEventListener("resize", syncLayout);
+    };
+  }, []);
+
+  useEffect(() => {
+    const pageShell = editorRef.current?.closest(".page-shell--editor");
+
+    if (!(pageShell instanceof HTMLElement)) {
+      return;
+    }
+
+    pageShell.classList.toggle("page-shell--editor--mobile", isMobileLayout);
+
+    return () => {
+      pageShell.classList.remove("page-shell--editor--mobile");
+    };
+  }, [isMobileLayout]);
+
   const drawDirtyPixels = useCallback(() => {
     if (dirtyPixelsRef.current.length === 0) {
       return;
     }
+
     const canvas = canvasRef.current;
     const minimapCanvas = minimapCanvasRef.current;
-    if (!canvas || !minimapCanvas) {
+
+    if (!canvas && !minimapCanvas) {
       return;
     }
 
-    const mainCtx = canvas.getContext("2d");
-    const minimapCtx = minimapCanvas.getContext("2d");
-    if (!mainCtx || !minimapCtx) {
+    const mainContext = canvas?.getContext("2d") ?? null;
+    const minimapContext = minimapCanvas?.getContext("2d") ?? null;
+
+    if (!mainContext && !minimapContext) {
       return;
     }
-    console.log(`[Canvas] Drawing ${dirtyPixelsRef.current.length} dirty pixels.`);
 
     const pixelsToDraw = [...dirtyPixelsRef.current];
     dirtyPixelsRef.current = [];
 
-    // ダーティなピクセルを個別に描画する。
-    // getImageData/putImageDataでキャンバス全体を更新するよりも、
-    // 変更箇所が少ない場合はこちらの方が高速なことが多い。
     for (const pixel of pixelsToDraw) {
       const colorString = getHexColorForPixelValue(pixel.color, paletteRef.current);
 
-      // メインキャンバスとミニマップの両方を更新
       if (!colorString) {
-        mainCtx.clearRect(pixel.x, pixel.y, 1, 1);
-        minimapCtx.clearRect(pixel.x, pixel.y, 1, 1);
+        mainContext?.clearRect(pixel.x, pixel.y, 1, 1);
+        minimapContext?.clearRect(pixel.x, pixel.y, 1, 1);
         continue;
       }
 
-      mainCtx.fillStyle = colorString;
-      mainCtx.fillRect(pixel.x, pixel.y, 1, 1);
-      minimapCtx.fillStyle = colorString;
-      minimapCtx.fillRect(pixel.x, pixel.y, 1, 1);
+      if (mainContext) {
+        mainContext.fillStyle = colorString;
+        mainContext.fillRect(pixel.x, pixel.y, 1, 1);
+      }
+
+      if (minimapContext) {
+        minimapContext.fillStyle = colorString;
+        minimapContext.fillRect(pixel.x, pixel.y, 1, 1);
+      }
     }
   }, []);
 
   const drawAllCanvases = useCallback(() => {
-    drawDirtyPixels(); // Ensure any pending changes are drawn first
+    drawDirtyPixels();
+
     if (canvasRef.current) {
       drawSnapshotToCanvas(
         canvasRef.current,
@@ -292,112 +431,117 @@ export function CanvasEditor({
     if (redrawQueuedRef.current) {
       return;
     }
+
     redrawQueuedRef.current = true;
-    console.log("[Canvas] Redraw requested.");
     requestAnimationFrame(() => {
       drawDirtyPixels();
       redrawQueuedRef.current = false;
     });
   }, [drawDirtyPixels]);
 
-  const getViewportMetrics = useCallback((
-    nextZoom = zoomRef.current,
-    proposedPan = panRef.current,
-  ) => {
-    const stage = stageRef.current;
+  const getViewportMetrics = useCallback(
+    (nextZoom = zoomRef.current, proposedPan = panRef.current) => {
+      const stage = stageRef.current;
 
-    if (!stage) {
-      return null;
-    }
+      if (!stage) {
+        return null;
+      }
 
-    const stageRect = stage.getBoundingClientRect();
-    const stageWidth = stage.clientWidth;
-    const stageHeight = stage.clientHeight;
-    const contentLeft = stageRect.left + (stageRect.width - stageWidth) / 2;
-    const contentTop = stageRect.top + (stageRect.height - stageHeight) / 2;
-    const surfaceWidth = initialSnapshot.width * nextZoom;
-    const surfaceHeight = initialSnapshot.height * nextZoom;
-    const maxPanX =
-      surfaceWidth > stageWidth ? (surfaceWidth - stageWidth) / 2 : 0;
-    const maxPanY =
-      surfaceHeight > stageHeight ? (surfaceHeight - stageHeight) / 2 : 0;
-    const clampedPan = {
-      x: maxPanX === 0 ? 0 : clamp(proposedPan.x, -maxPanX, maxPanX),
-      y: maxPanY === 0 ? 0 : clamp(proposedPan.y, -maxPanY, maxPanY),
-    };
-    const relativeLeft = (stageWidth - surfaceWidth) / 2 + clampedPan.x;
-    const relativeTop = (stageHeight - surfaceHeight) / 2 + clampedPan.y;
-    const surfaceLeft = contentLeft + relativeLeft;
-    const surfaceTop = contentTop + relativeTop;
+      const stageRect = stage.getBoundingClientRect();
+      const stageWidth = stage.clientWidth;
+      const stageHeight = stage.clientHeight;
+      const contentLeft = stageRect.left + (stageRect.width - stageWidth) / 2;
+      const contentTop = stageRect.top + (stageRect.height - stageHeight) / 2;
+      const surfaceWidth = initialSnapshot.width * nextZoom;
+      const surfaceHeight = initialSnapshot.height * nextZoom;
+      const maxPanX =
+        surfaceWidth > stageWidth ? (surfaceWidth - stageWidth) / 2 : 0;
+      const maxPanY =
+        surfaceHeight > stageHeight ? (surfaceHeight - stageHeight) / 2 : 0;
+      const clampedPan = {
+        x: maxPanX === 0 ? 0 : clamp(proposedPan.x, -maxPanX, maxPanX),
+        y: maxPanY === 0 ? 0 : clamp(proposedPan.y, -maxPanY, maxPanY),
+      };
+      const relativeLeft = (stageWidth - surfaceWidth) / 2 + clampedPan.x;
+      const relativeTop = (stageHeight - surfaceHeight) / 2 + clampedPan.y;
+      const surfaceLeft = contentLeft + relativeLeft;
+      const surfaceTop = contentTop + relativeTop;
 
-    const visibleLeft = clamp(
-      (contentLeft - surfaceLeft) / nextZoom,
-      0,
-      initialSnapshot.width,
-    );
-    const visibleTop = clamp(
-      (contentTop - surfaceTop) / nextZoom,
-      0,
-      initialSnapshot.height,
-    );
-    const visibleRight = clamp(
-      (contentLeft + stageWidth - surfaceLeft) / nextZoom,
-      0,
-      initialSnapshot.width,
-    );
-    const visibleBottom = clamp(
-      (contentTop + stageHeight - surfaceTop) / nextZoom,
-      0,
-      initialSnapshot.height,
-    );
+      const visibleLeft = clamp(
+        (contentLeft - surfaceLeft) / nextZoom,
+        0,
+        initialSnapshot.width,
+      );
+      const visibleTop = clamp(
+        (contentTop - surfaceTop) / nextZoom,
+        0,
+        initialSnapshot.height,
+      );
+      const visibleRight = clamp(
+        (contentLeft + stageWidth - surfaceLeft) / nextZoom,
+        0,
+        initialSnapshot.width,
+      );
+      const visibleBottom = clamp(
+        (contentTop + stageHeight - surfaceTop) / nextZoom,
+        0,
+        initialSnapshot.height,
+      );
 
-    return {
-      clampedPan,
-      contentLeft,
-      contentTop,
-      stageWidth,
-      stageHeight,
-      relativeLeft,
-      relativeTop,
-      surfaceLeft,
-      surfaceTop,
-      surfaceWidth,
-      surfaceHeight,
-      visibleLeft,
-      visibleTop,
-      visibleRight,
-      visibleBottom,
-      navigatorEnabled: maxPanX > 0 || maxPanY > 0,
-    };
-  }, [initialSnapshot.height, initialSnapshot.width]);
+      return {
+        clampedPan,
+        contentLeft,
+        contentTop,
+        navigatorEnabled: maxPanX > 0 || maxPanY > 0,
+        relativeLeft,
+        relativeTop,
+        stageHeight,
+        stageWidth,
+        surfaceHeight,
+        surfaceLeft,
+        surfaceTop,
+        surfaceWidth,
+        visibleBottom,
+        visibleLeft,
+        visibleRight,
+        visibleTop,
+      };
+    },
+    [initialSnapshot.height, initialSnapshot.width],
+  );
 
-  const updateViewportFrameForState = useCallback((
-    nextZoom = zoomRef.current,
-    proposedPan = panRef.current,
-  ) => {
-    const metrics = getViewportMetrics(nextZoom, proposedPan);
+  const updateViewportFrameForState = useCallback(
+    (nextZoom = zoomRef.current, proposedPan = panRef.current) => {
+      const metrics = getViewportMetrics(nextZoom, proposedPan);
 
-    if (!metrics) {
-      return proposedPan;
-    }
+      if (!metrics) {
+        return proposedPan;
+      }
 
-    setSurfaceFrame({
-      left: metrics.relativeLeft,
-      top: metrics.relativeTop,
-      width: metrics.surfaceWidth,
-      height: metrics.surfaceHeight,
-    });
+      setSurfaceFrame({
+        left: metrics.relativeLeft,
+        top: metrics.relativeTop,
+        width: metrics.surfaceWidth,
+        height: metrics.surfaceHeight,
+      });
 
-    setViewportFrame({
-      left: (metrics.visibleLeft / initialSnapshot.width) * 100,
-      top: (metrics.visibleTop / initialSnapshot.height) * 100,
-      width: ((metrics.visibleRight - metrics.visibleLeft) / initialSnapshot.width) * 100,
-      height: ((metrics.visibleBottom - metrics.visibleTop) / initialSnapshot.height) * 100,
-      enabled: metrics.navigatorEnabled,
-    });
+      setViewportFrame({
+        left: (metrics.visibleLeft / initialSnapshot.width) * 100,
+        top: (metrics.visibleTop / initialSnapshot.height) * 100,
+        width:
+          ((metrics.visibleRight - metrics.visibleLeft) / initialSnapshot.width) *
+          100,
+        height:
+          ((metrics.visibleBottom - metrics.visibleTop) /
+            initialSnapshot.height) *
+          100,
+        enabled: metrics.navigatorEnabled,
+      });
 
-    return metrics.clampedPan;
-  }, [getViewportMetrics, initialSnapshot.height, initialSnapshot.width]);
+      return metrics.clampedPan;
+    },
+    [getViewportMetrics, initialSnapshot.height, initialSnapshot.width],
+  );
 
   function centerOnContentPosition(contentX: number, contentY: number) {
     const nextZoom = zoomRef.current;
@@ -410,6 +554,203 @@ export function CanvasEditor({
     setPan(clampedPan);
     panRef.current = clampedPan;
   }
+
+  function setCursorToPixel(
+    nextPixel: PixelPoint,
+    shouldPaint = false,
+    nextFloat?: PointerPosition,
+  ) {
+    const clampedPixel = {
+      x: clamp(nextPixel.x, 0, initialSnapshot.width - 1),
+      y: clamp(nextPixel.y, 0, initialSnapshot.height - 1),
+    };
+    const previousPixel = cursorPixelRef.current;
+
+    cursorFloatRef.current = nextFloat
+      ? {
+          x: clamp(nextFloat.x, 0, initialSnapshot.width - 1),
+          y: clamp(nextFloat.y, 0, initialSnapshot.height - 1),
+        }
+      : {
+          x: clampedPixel.x,
+          y: clampedPixel.y,
+        };
+
+    if (
+      previousPixel.x === clampedPixel.x &&
+      previousPixel.y === clampedPixel.y
+    ) {
+      return previousPixel;
+    }
+
+    cursorPixelRef.current = clampedPixel;
+    setCursorPixel(clampedPixel);
+
+    if (shouldPaint) {
+      paintStroke(previousPixel, clampedPixel);
+    }
+
+    return clampedPixel;
+  }
+
+  function moveCursorByScreenDelta(deltaX: number, deltaY: number) {
+    const nextFloat = {
+      x: cursorFloatRef.current.x + deltaX / zoomRef.current,
+      y: cursorFloatRef.current.y + deltaY / zoomRef.current,
+    };
+    const clampedFloat = {
+      x: clamp(nextFloat.x, 0, initialSnapshot.width - 1),
+      y: clamp(nextFloat.y, 0, initialSnapshot.height - 1),
+    };
+    const nextPixel = {
+      x: Math.round(clampedFloat.x),
+      y: Math.round(clampedFloat.y),
+    };
+
+    setCursorToPixel(nextPixel, paintButtonPressedRef.current, clampedFloat);
+  }
+
+  function paintCurrentCursor() {
+    paintStroke(cursorPixelRef.current, cursorPixelRef.current);
+  }
+
+  function beginPinchGesture() {
+    const pointers = [...activePointersRef.current.values()];
+
+    if (pointers.length < 2) {
+      pinchGestureRef.current = null;
+      setIsTouchNavigating(false);
+      return;
+    }
+
+    const first = pointers[0];
+    const second = pointers[1];
+    const midpoint = getMidpoint(first, second);
+    const viewport = getViewportMetrics(zoomRef.current, panRef.current);
+
+    if (!viewport) {
+      return;
+    }
+
+    pinchGestureRef.current = {
+      contentLeft: viewport.contentLeft,
+      contentTop: viewport.contentTop,
+      contentX: clamp(
+        (midpoint.x - viewport.surfaceLeft) / zoomRef.current,
+        0,
+        initialSnapshot.width,
+      ),
+      contentY: clamp(
+        (midpoint.y - viewport.surfaceTop) / zoomRef.current,
+        0,
+        initialSnapshot.height,
+      ),
+      stageHeight: viewport.stageHeight,
+      stageWidth: viewport.stageWidth,
+      startDistance: Math.max(getDistance(first, second), 1),
+      startZoom: zoomRef.current,
+    };
+    singleTouchRef.current = null;
+    setIsTouchNavigating(true);
+  }
+
+  function syncMobileGestureState() {
+    const pointerEntries = [...activePointersRef.current.entries()];
+
+    if (pointerEntries.length >= 2) {
+      beginPinchGesture();
+      return;
+    }
+
+    pinchGestureRef.current = null;
+    setIsTouchNavigating(false);
+
+    if (pointerEntries.length === 1) {
+      const [pointerId, point] = pointerEntries[0];
+      singleTouchRef.current = {
+        pointerId,
+        x: point.x,
+        y: point.y,
+      };
+      return;
+    }
+
+    singleTouchRef.current = null;
+  }
+
+  function updatePinchGesture() {
+    const gesture = pinchGestureRef.current;
+    const pointers = [...activePointersRef.current.values()];
+
+    if (!gesture || pointers.length < 2) {
+      return;
+    }
+
+    const first = pointers[0];
+    const second = pointers[1];
+    const midpoint = getMidpoint(first, second);
+    const scale = getDistance(first, second) / gesture.startDistance;
+    const nextZoom = clamp(
+      Number((gesture.startZoom * scale).toFixed(2)),
+      1,
+      24,
+    );
+    const nextSurfaceWidth = initialSnapshot.width * nextZoom;
+    const nextSurfaceHeight = initialSnapshot.height * nextZoom;
+    const proposedPan = {
+      x:
+        midpoint.x -
+        gesture.contentLeft -
+        (gesture.stageWidth - nextSurfaceWidth) / 2 -
+        gesture.contentX * nextZoom,
+      y:
+        midpoint.y -
+        gesture.contentTop -
+        (gesture.stageHeight - nextSurfaceHeight) / 2 -
+        gesture.contentY * nextZoom,
+    };
+    const nextPan = updateViewportFrameForState(nextZoom, proposedPan);
+
+    setZoom(nextZoom);
+    setPan(nextPan);
+    zoomRef.current = nextZoom;
+    panRef.current = nextPan;
+  }
+
+  const handleOutsidePointerDown = useEffectEvent((event: PointerEvent) => {
+    if (!toolbarRef.current?.contains(event.target as Node)) {
+      setOpenPopover(null);
+    }
+  });
+
+  const handleEscapeToClosePopover = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setOpenPopover(null);
+    }
+  });
+
+  useEffect(() => {
+    if (!isMobileLayout || !openPopover) {
+      return;
+    }
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown, true);
+    document.addEventListener("keydown", handleEscapeToClosePopover);
+
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleOutsidePointerDown,
+        true,
+      );
+      document.removeEventListener("keydown", handleEscapeToClosePopover);
+    };
+  }, [
+    handleEscapeToClosePopover,
+    handleOutsidePointerDown,
+    isMobileLayout,
+    openPopover,
+  ]);
 
   useEffect(() => {
     drawAllCanvases();
@@ -534,13 +875,11 @@ export function CanvasEditor({
     });
 
     const handleSocketMessage = (event: MessageEvent<string>) => {
-      console.log("[WS] Received message:", event.data);
-
       let message;
       try {
         message = JSON.parse(event.data);
-      } catch (e) {
-        console.error("Failed to parse JSON:", e);
+      } catch (error) {
+        console.error("Failed to parse JSON:", error);
         return;
       }
 
@@ -554,33 +893,44 @@ export function CanvasEditor({
           message.palette.length,
         );
         paletteRef.current = message.palette;
-        dirtyPixelsRef.current = []; // Clear pending changes
+        dirtyPixelsRef.current = [];
         parsedPaletteRef.current = parsePaletteColors(message.palette);
         setPalette(message.palette);
         drawAllCanvases();
         updateViewportFrameForState();
         setStatusMessage(`${wallName ?? "キャンバス"} と同期しました。`);
-      } else if (message.type === "pixel:applied") {
+        return;
+      }
+
+      if (message.type === "pixel:applied") {
         const { x, y } = message;
         const color = normalizePixelValue(message.color, paletteRef.current.length);
         const index = y * initialSnapshot.width + x;
+
         if (index >= 0 && index < pixelsRef.current.length) {
           pixelsRef.current[index] = color;
         }
+
         dirtyPixelsRef.current.push({ x, y, color });
         requestRedraw();
-      } else if (message.type === "pixels:applied") {
+        return;
+      }
+
+      if (message.type === "pixels:applied") {
         for (const pixel of message.pixels) {
           const index = pixel.y * initialSnapshot.width + pixel.x;
           const color = normalizePixelValue(
             pixel.color,
             paletteRef.current.length,
           );
+
           if (index >= 0 && index < pixelsRef.current.length) {
             pixelsRef.current[index] = color;
           }
+
           dirtyPixelsRef.current.push({ ...pixel, color });
         }
+
         requestRedraw();
       }
     };
@@ -605,15 +955,13 @@ export function CanvasEditor({
       socketRef.current = null;
     };
   }, [
-    initialSnapshot.canvasId,
-    wsBase,
-    initialSnapshot.width,
     drawAllCanvases,
+    initialSnapshot.canvasId,
+    initialSnapshot.width,
     requestRedraw,
-    setPalette,
-    setStatusMessage,
     updateViewportFrameForState,
     wallName,
+    wsBase,
   ]);
 
   useEffect(() => {
@@ -625,7 +973,7 @@ export function CanvasEditor({
 
     setPan(nextPan);
     panRef.current = nextPan;
-  }, [pan, zoom, updateViewportFrameForState]);
+  }, [pan, updateViewportFrameForState, zoom]);
 
   function getPixelPosition(event: ReactPointerEvent<HTMLCanvasElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -642,15 +990,7 @@ export function CanvasEditor({
     };
   }
 
-  // この関数は、ローカルでの描画とデータモデルの更新のみを担当します。
-  // WebSocketメッセージの送信は行いません。
   function applyPixelLocally(x: number, y: number, color: number) {
-    if (
-      !canvasRef.current
-    ) {
-      return;
-    }
-
     const index = y * initialSnapshot.width + x;
     const normalizedColor = normalizePixelValue(color, paletteRef.current.length);
 
@@ -663,10 +1003,7 @@ export function CanvasEditor({
     requestRedraw();
   }
 
-  function paintStroke(
-    from: { x: number; y: number },
-    to: { x: number; y: number },
-  ) {
+  function paintStroke(from: PixelPoint, to: PixelPoint) {
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
       return;
     }
@@ -677,6 +1014,7 @@ export function CanvasEditor({
 
     for (const pixel of pixelsToPaint) {
       const index = pixel.y * initialSnapshot.width + pixel.x;
+
       if (pixelsRef.current[index] !== color) {
         applyPixelLocally(pixel.x, pixel.y, color);
         pixelsForMessage.push({ ...pixel, color });
@@ -686,7 +1024,7 @@ export function CanvasEditor({
     if (pixelsForMessage.length > 0) {
       socketRef.current.send(
         JSON.stringify({
-          type: "pixels:set", // 複数のピクセルを一度に送信
+          type: "pixels:set",
           canvasId: initialSnapshot.canvasId,
           pixels: pixelsForMessage,
         }),
@@ -694,7 +1032,7 @@ export function CanvasEditor({
     }
   }
 
-  function startPanning(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function startDesktopPanning(event: ReactPointerEvent<HTMLCanvasElement>) {
     panStartRef.current = {
       x: event.clientX,
       y: event.clientY,
@@ -705,13 +1043,13 @@ export function CanvasEditor({
     setIsPanning(true);
   }
 
-  function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleDesktopPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
 
     if (event.button === 1 || event.button === 2 || spacePressedRef.current) {
-      startPanning(event);
-      setHoveredPixel(getPixelPosition(event));
+      startDesktopPanning(event);
+      setCursorToPixel(getPixelPosition(event));
       return;
     }
 
@@ -720,14 +1058,14 @@ export function CanvasEditor({
     }
 
     const position = getPixelPosition(event);
-    setHoveredPixel(position);
+    setCursorToPixel(position);
     lastPointerPixelRef.current = position;
     paintStroke(position, position);
   }
 
-  function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleDesktopPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
     const position = getPixelPosition(event);
-    setHoveredPixel(position);
+    setCursorToPixel(position);
 
     if (panStartRef.current) {
       const nextPan = {
@@ -749,18 +1087,83 @@ export function CanvasEditor({
     lastPointerPixelRef.current = position;
   }
 
+  function handleMobilePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    syncMobileGestureState();
+  }
+
+  function handleMobilePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (!activePointersRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (activePointersRef.current.size >= 2) {
+      updatePinchGesture();
+      return;
+    }
+
+    if (!singleTouchRef.current || singleTouchRef.current.pointerId !== event.pointerId) {
+      singleTouchRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      return;
+    }
+
+    moveCursorByScreenDelta(
+      event.clientX - singleTouchRef.current.x,
+      event.clientY - singleTouchRef.current.y,
+    );
+    singleTouchRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (isMobileLayout) {
+      handleMobilePointerDown(event);
+      return;
+    }
+
+    handleDesktopPointerDown(event);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (isMobileLayout) {
+      handleMobilePointerMove(event);
+      return;
+    }
+
+    handleDesktopPointerMove(event);
+  }
+
   function handlePointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
+    if (isMobileLayout) {
+      activePointersRef.current.delete(event.pointerId);
+      syncMobileGestureState();
+      return;
+    }
+
     panStartRef.current = null;
     lastPointerPixelRef.current = null;
     setIsPanning(false);
-  }
-
-  function handlePointerLeave() {
-    setHoveredPixel(null);
   }
 
   function handleMinimapNavigate(event: ReactPointerEvent<HTMLDivElement>) {
@@ -789,6 +1192,30 @@ export function CanvasEditor({
     centerOnContentPosition(contentX, contentY);
   }
 
+  function togglePopover(nextPopover: Exclude<PopoverKind, null>) {
+    setOpenPopover((current) => (current === nextPopover ? null : nextPopover));
+  }
+
+  function handlePaintButtonPointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    ignoreNextPaintClickRef.current = true;
+    setPaintButtonPressed(true);
+    paintCurrentCursor();
+  }
+
+  function handlePaintButtonPointerUp(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    setPaintButtonPressed(false);
+  }
+
   const connectionLabel = {
     connecting: "接続中",
     open: "接続済み",
@@ -805,66 +1232,99 @@ export function CanvasEditor({
     selectedColor === TRANSPARENT_PIXEL_VALUE
       ? "透明"
       : selectedColorHex ?? `色 ${selectedColor}`;
+  const stageIsPannable = isPanning || spacePressed || isTouchNavigating;
 
-  return (
-    <section className="canvas-editor">
-      <aside className="canvas-sidebar canvas-sidebar--left">
-        <div className="canvas-panel">
-          <div className="stack-sm">
-            <div className="page-kicker">Canvas Editor</div>
-            <h1
-              className="section-title"
-              style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)" }}
-            >
-              {wallName ?? "ライブキャンバス"}
-            </h1>
-          </div>
-        </div>
-
-        <div className="canvas-panel canvas-panel--grow">
-          <div className="stack-sm">
-            <div className="step-badge">Palette</div>
-            <h2 className="section-title" style={{ fontSize: "1.2rem" }}>
-              {palette.length} colors + transparent
-            </h2>
-            <div className="canvas-selected-color">
-              <span>選択中</span>
-              <strong>{selectedColorLabel}</strong>
-              <i
-                className={`canvas-selected-color__swatch${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-transparent" : ""}`}
-                style={
-                  selectedColorHex
-                    ? { backgroundColor: selectedColorHex }
-                    : undefined
-                }
-              />
-            </div>
-          </div>
-
-          <div className="palette-grid">
-            {palette.map((color, index) => (
-              <button
-                key={`${index}-${color}`}
-                aria-label={`color ${index + 1}`}
-                className={`palette-swatch${selectedColor === index + 1 ? " is-selected" : ""}`}
-                onClick={() => setSelectedColor(index + 1)}
-                style={{ backgroundColor: color }}
-                type="button"
-              />
-            ))}
-            <button
-              aria-label="transparent"
-              className={`palette-swatch palette-swatch--transparent${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-selected" : ""}`}
-              onClick={() => setSelectedColor(TRANSPARENT_PIXEL_VALUE)}
-              type="button"
+  function renderPaletteContent() {
+    return (
+      <>
+        <div className="stack-sm">
+          <div className="step-badge">Palette</div>
+          <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
+            {palette.length} colors + transparent
+          </h2>
+          <div className="canvas-selected-color">
+            <span>選択中</span>
+            <strong>{selectedColorLabel}</strong>
+            <i
+              className={`canvas-selected-color__swatch${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-transparent" : ""}`}
+              style={selectedColorHex ? { backgroundColor: selectedColorHex } : undefined}
             />
           </div>
         </div>
-      </aside>
 
-      <div className="canvas-stage-shell">
+        <div className="palette-grid">
+          {palette.map((color, index) => (
+            <button
+              key={`${index}-${color}`}
+              aria-label={`color ${index + 1}`}
+              className={`palette-swatch${selectedColor === index + 1 ? " is-selected" : ""}`}
+              onClick={() => setSelectedColor(index + 1)}
+              style={{ backgroundColor: color }}
+              type="button"
+            />
+          ))}
+          <button
+            aria-label="transparent"
+            className={`palette-swatch palette-swatch--transparent${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-selected" : ""}`}
+            onClick={() => setSelectedColor(TRANSPARENT_PIXEL_VALUE)}
+            type="button"
+          />
+        </div>
+      </>
+    );
+  }
+
+  function renderInfoContent() {
+    return (
+      <>
+        <div className="stack-sm">
+          <div className="step-badge">Info</div>
+          <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
+            キャンバス情報
+          </h2>
+        </div>
+
+        <div className="canvas-info-list">
+          <div className="canvas-info-row">
+            <span>接続状態</span>
+            <strong className={`tag tag--${connectionState}`}>
+              {connectionLabel[connectionState]}
+            </strong>
+          </div>
+          <div className="canvas-info-row">
+            <span>サイズ</span>
+            <strong>
+              {initialSnapshot.width} x {initialSnapshot.height}px
+            </strong>
+          </div>
+          <div className="canvas-info-row">
+            <span>パレット</span>
+            <strong>
+              {initialSnapshot.paletteVersion} / {palette.length}色 + 透明
+            </strong>
+          </div>
+          <div className="canvas-info-row">
+            <span>カーソル</span>
+            <strong>
+              {cursorPixel.x}, {cursorPixel.y}
+            </strong>
+          </div>
+          <div className="canvas-info-row">
+            <span>ズーム</span>
+            <strong>{Math.round(zoom * 100)}%</strong>
+          </div>
+        </div>
+
+        <p className="section-copy">{statusMessage}</p>
+      </>
+    );
+  }
+
+  function renderStage() {
+    return (
+      <div className="canvas-stage-shell canvas-stage-shell--main">
         <div
-          className={`canvas-stage${isPanning || spacePressed ? " is-pannable" : ""}`}
+          className={`canvas-stage${stageIsPannable ? " is-pannable" : ""}`}
           ref={stageRef}
         >
           <div
@@ -892,7 +1352,6 @@ export function CanvasEditor({
               height={initialSnapshot.height}
               onContextMenu={(event) => event.preventDefault()}
               onPointerDown={handlePointerDown}
-              onPointerLeave={handlePointerLeave}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
@@ -903,139 +1362,201 @@ export function CanvasEditor({
               }}
               width={initialSnapshot.width}
             />
-            {hoveredPixel ? (
-              <div
-                className="canvas-stage__cursor"
-                style={{
-                  width: zoom,
-                  height: zoom,
-                  transform: `translate(${hoveredPixel.x * zoom}px, ${hoveredPixel.y * zoom}px)`,
-                }}
-              />
-            ) : null}
+            <div
+              className="canvas-stage__cursor"
+              style={{
+                width: zoom,
+                height: zoom,
+                transform: `translate(${cursorPixel.x * zoom}px, ${cursorPixel.y * zoom}px)`,
+              }}
+            />
           </div>
         </div>
       </div>
+    );
+  }
 
-      <aside className="canvas-sidebar canvas-sidebar--right">
-        <div className="canvas-panel">
-          <div className="stack-sm">
-            <div className="step-badge">View</div>
-            <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
-              Navigator
-            </h2>
-          </div>
-
-          <div
-            className={`canvas-minimap${viewportFrame.enabled ? " is-active" : ""}`}
-            onPointerDown={(event) => {
-              if (!viewportFrame.enabled) {
-                return;
-              }
-
-              event.preventDefault();
-              event.currentTarget.setPointerCapture(event.pointerId);
-              handleMinimapNavigate(event);
-            }}
-            onPointerMove={(event) => {
-              if (!viewportFrame.enabled || (event.buttons & 1) !== 1) {
-                return;
-              }
-
-              handleMinimapNavigate(event);
-            }}
-            onPointerUp={(event) => {
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                event.currentTarget.releasePointerCapture(event.pointerId);
-              }
-            }}
-            ref={minimapFrameRef}
-            style={{
-              aspectRatio: `${initialSnapshot.width} / ${initialSnapshot.height}`,
-            }}
+  return (
+    <section
+      className={`canvas-editor${isMobileLayout ? " is-mobile" : ""}`}
+      ref={editorRef}
+    >
+      <AppHeader
+        leading={
+          <Link
+            aria-label="マップへ戻る"
+            className="site-header__control site-header__control--icon"
+            href={leaveHref}
           >
-            <div
-              className="canvas-minimap__reference"
-              style={referenceBackgroundStyle}
-            />
-            <canvas
-              className="canvas-minimap__canvas"
-              height={initialSnapshot.height}
-              ref={minimapCanvasRef}
-              width={initialSnapshot.width}
-            />
-            {viewportFrame.enabled ? (
+            <ArrowLeft size={20} weight="bold" />
+          </Link>
+        }
+        title={
+          <div className="site-header__title">
+            {wallName ?? "ライブキャンバス"}
+          </div>
+        }
+      />
+
+      {isMobileLayout ? (
+        <div className="canvas-editor__mobile">
+          <div className="canvas-mobile__stage">{renderStage()}</div>
+
+          <div className="canvas-mobile__toolbar" ref={toolbarRef}>
+            <div className="canvas-mobile-toolbar__item">
+              <button
+                aria-expanded={openPopover === "palette"}
+                aria-haspopup="dialog"
+                className="canvas-mobile-toolbar__button"
+                onClick={() => togglePopover("palette")}
+                type="button"
+              >
+                <span
+                  className={`canvas-mobile-toolbar__swatch${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-transparent" : ""}`}
+                  style={selectedColorHex ? { backgroundColor: selectedColorHex } : undefined}
+                />
+                <Palette size={18} weight="bold" />
+                <span>Color</span>
+              </button>
+
+              {openPopover === "palette" ? (
+                <div className="canvas-mobile-toolbar__popover" role="dialog">
+                  <div className="canvas-mobile-popover">
+                    {renderPaletteContent()}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="canvas-mobile-toolbar__item canvas-mobile-toolbar__item--align-end">
+              <button
+                aria-expanded={openPopover === "info"}
+                aria-haspopup="dialog"
+                className="canvas-mobile-toolbar__button"
+                onClick={() => togglePopover("info")}
+                type="button"
+              >
+                <Info size={18} weight="bold" />
+                <span>Info</span>
+              </button>
+
+              {openPopover === "info" ? (
+                <div className="canvas-mobile-toolbar__popover" role="dialog">
+                  <div className="canvas-mobile-popover">
+                    {renderInfoContent()}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="canvas-mobile__paint">
+            <button
+              className={`canvas-paint-button${paintButtonPressed ? " is-active" : ""}`}
+              onClick={() => {
+                if (ignoreNextPaintClickRef.current) {
+                  ignoreNextPaintClickRef.current = false;
+                  return;
+                }
+
+                paintCurrentCursor();
+              }}
+              onLostPointerCapture={() => setPaintButtonPressed(false)}
+              onPointerCancel={handlePaintButtonPointerUp}
+              onPointerDown={handlePaintButtonPointerDown}
+              onPointerUp={handlePaintButtonPointerUp}
+              type="button"
+            >
+              PAINT
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="canvas-editor__desktop">
+          <aside className="canvas-sidebar canvas-sidebar--left">
+            <div className="canvas-panel canvas-panel--grow">
+              {renderPaletteContent()}
+            </div>
+          </aside>
+
+          {renderStage()}
+
+          <aside className="canvas-sidebar canvas-sidebar--right">
+            <div className="canvas-panel">
+              <div className="stack-sm">
+                <div className="step-badge">View</div>
+                <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
+                  Navigator
+                </h2>
+              </div>
+
               <div
-                className="canvas-minimap__viewport"
-                style={{
-                  left: `${viewportFrame.left}%`,
-                  top: `${viewportFrame.top}%`,
-                  width: `${viewportFrame.width}%`,
-                  height: `${viewportFrame.height}%`,
+                className={`canvas-minimap${viewportFrame.enabled ? " is-active" : ""}`}
+                onPointerDown={(event) => {
+                  if (!viewportFrame.enabled) {
+                    return;
+                  }
+
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  handleMinimapNavigate(event);
                 }}
-              />
-            ) : null}
-          </div>
+                onPointerMove={(event) => {
+                  if (!viewportFrame.enabled || (event.buttons & 1) !== 1) {
+                    return;
+                  }
 
-          <div className="canvas-view-controls">
-            <div className="tag">{Math.round(zoom * 100)}%</div>
-            <p className="section-copy">
-              {viewportFrame.enabled
-                ? "ミニビューをドラッグすると表示位置を移動できます。"
-                : "キャンバス全体が表示されています。"}
-            </p>
-          </div>
+                  handleMinimapNavigate(event);
+                }}
+                onPointerUp={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }
+                }}
+                ref={minimapFrameRef}
+                style={{
+                  aspectRatio: `${initialSnapshot.width} / ${initialSnapshot.height}`,
+                }}
+              >
+                <div
+                  className="canvas-minimap__reference"
+                  style={referenceBackgroundStyle}
+                />
+                <canvas
+                  className="canvas-minimap__canvas"
+                  height={initialSnapshot.height}
+                  ref={minimapCanvasRef}
+                  width={initialSnapshot.width}
+                />
+                {viewportFrame.enabled ? (
+                  <div
+                    className="canvas-minimap__viewport"
+                    style={{
+                      left: `${viewportFrame.left}%`,
+                      top: `${viewportFrame.top}%`,
+                      width: `${viewportFrame.width}%`,
+                      height: `${viewportFrame.height}%`,
+                    }}
+                  />
+                ) : null}
+              </div>
+
+              <div className="canvas-view-controls">
+                <div className="tag">{Math.round(zoom * 100)}%</div>
+                <p className="section-copy">
+                  {viewportFrame.enabled
+                    ? "ミニビューをドラッグすると表示位置を移動できます。"
+                    : "キャンバス全体が表示されています。"}
+                </p>
+              </div>
+            </div>
+
+            <div className="canvas-panel canvas-panel--grow">
+              {renderInfoContent()}
+            </div>
+          </aside>
         </div>
-
-        <div className="canvas-panel canvas-panel--grow">
-          <div className="stack-sm">
-            <div className="step-badge">Info</div>
-            <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
-              キャンバス情報
-            </h2>
-          </div>
-
-          <div className="canvas-info-list">
-            <div className="canvas-info-row">
-              <span>接続状態</span>
-              <strong className={`tag tag--${connectionState}`}>
-                {connectionLabel[connectionState]}
-              </strong>
-            </div>
-            <div className="canvas-info-row">
-              <span>サイズ</span>
-              <strong>
-                {initialSnapshot.width} x {initialSnapshot.height}px
-              </strong>
-            </div>
-            <div className="canvas-info-row">
-              <span>パレット</span>
-              <strong>
-                {initialSnapshot.paletteVersion} / {palette.length}色 + 透明
-              </strong>
-            </div>
-            <div className="canvas-info-row">
-              <span>カーソル</span>
-              <strong>
-                {hoveredPixel ? `${hoveredPixel.x}, ${hoveredPixel.y}` : "-"}
-              </strong>
-            </div>
-            <div className="canvas-info-row">
-              <span>ズーム</span>
-              <strong>{Math.round(zoom * 100)}%</strong>
-            </div>
-          </div>
-
-          <p className="section-copy">{statusMessage}</p>
-        </div>
-
-        <Link
-          className="button button-secondary canvas-sidebar__leave"
-          href={leaveHref}
-        >
-          編集を終了
-        </Link>
-      </aside>
+      )}
     </section>
   );
 }

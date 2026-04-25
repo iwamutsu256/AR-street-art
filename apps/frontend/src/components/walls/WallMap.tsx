@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { WallDetail, WallSummary } from "@street-art/shared";
@@ -38,6 +39,7 @@ const DEFAULT_CENTER: LocationValue = {
 
 const LOCATION_JUMP_ZOOM = 8;
 const INITIAL_REGION_ZOOM = 7;
+const FOCUSED_WALL_ZOOM = 15;
 
 function normalizeLocation(latitude: number, longitude: number): LocationValue {
   return {
@@ -139,6 +141,8 @@ function CloseIcon() {
 }
 
 export function WallMap({ mapTilerKey }: WallMapProps) {
+  const searchParams = useSearchParams();
+  const focusWallId = searchParams.get("focusWallId");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -146,10 +150,12 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
   const wallsRef = useRef<WallSummary[]>([]);
   const selectedWallIdRef = useRef<string | null>(null);
   const detailRequestRef = useRef(0);
+  const appliedFocusWallIdRef = useRef<string | null>(null);
   const [initialView, setInitialView] = useState<InitialView | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [wallFetchError, setWallFetchError] = useState<string | null>(null);
+  const [wallsLoaded, setWallsLoaded] = useState(false);
   const [userLocation, setUserLocation] = useState<LocationValue | null>(null);
   const [selectedSummary, setSelectedSummary] = useState<WallSummary | null>(
     null,
@@ -301,6 +307,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
     }
 
     const controller = new AbortController();
+    setWallsLoaded(false);
 
     async function loadWalls() {
       try {
@@ -314,6 +321,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
 
         const walls = (await response.json()) as WallSummary[];
         wallsRef.current = walls;
+        setWallsLoaded(true);
         setWallFetchError(null);
         syncVisibleWallMarkers();
       } catch (error) {
@@ -321,6 +329,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
           return;
         }
 
+        setWallsLoaded(false);
         setWallFetchError("壁データを取得できませんでした。");
       }
     }
@@ -437,6 +446,30 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
         .classList.toggle("is-selected", wallId === selectedSummary?.id);
     }
   }, [selectedSummary?.id]);
+
+  useEffect(() => {
+    if (!focusWallId) {
+      appliedFocusWallIdRef.current = null;
+      return;
+    }
+
+    if (!mapReady || !wallsLoaded || appliedFocusWallIdRef.current === focusWallId) {
+      return;
+    }
+
+    const targetWall = wallsRef.current.find((wall) => wall.id === focusWallId);
+
+    if (!targetWall) {
+      return;
+    }
+
+    appliedFocusWallIdRef.current = focusWallId;
+    mapRef.current?.flyTo({
+      center: [targetWall.longitude, targetWall.latitude],
+      zoom: Math.max(mapRef.current?.getZoom() ?? INITIAL_REGION_ZOOM, FOCUSED_WALL_ZOOM),
+    });
+    void fetchWallDetail(targetWall);
+  }, [focusWallId, mapReady, wallsLoaded]);
 
   function handleFocusUserLocation() {
     if (!userLocation) {
