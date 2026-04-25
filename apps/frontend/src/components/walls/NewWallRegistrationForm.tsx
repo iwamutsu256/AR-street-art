@@ -4,12 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
+  useRef,
   useState,
+  type CSSProperties,
   type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
-import { ArrowLeft } from "@phosphor-icons/react";
+import {
+  ArrowCounterClockwiseIcon,
+  ArrowLeft,
+  UploadSimpleIcon,
+} from "@phosphor-icons/react";
 import {
   CANVAS_MAX_SIZE,
   DEFAULT_CANVAS_SIZE,
@@ -17,7 +23,7 @@ import {
   type CreateWallResponse,
 } from "@street-art/shared";
 import { CornerEditor } from "./CornerEditor";
-import { LocationPicker } from "./LocationPicker";
+import { LocationPicker, LocationPreviewMap } from "./LocationPicker";
 import { WallScanner, type ScannedWallCapture } from "./WallScanner";
 import {
   buildAspectAdjustedRectifiedImageAsset,
@@ -38,12 +44,14 @@ import {
 } from "../../lib/walls";
 import { AppHeader } from "../AppHeader";
 import { ConfirmationDialog } from "../ConfirmationDialog";
+import { Spinner } from "../Spinner";
 
 const ASPECT_RATIO_MIN = 1 / 3;
 const ASPECT_RATIO_MAX = 3;
 const ASPECT_RATIO_SLIDER_MIN = 0;
 const ASPECT_RATIO_SLIDER_MAX = 100;
 const MAX_ORIGINAL_LONG_EDGE = 3840;
+const PIXEL_NUMBER_FORMATTER = new Intl.NumberFormat("ja-JP");
 
 type RegistrationMethod = "scan" | "upload";
 type WallStep =
@@ -94,6 +102,10 @@ const initialValues: WallFormValues = {
   latitude: "",
   longitude: "",
 };
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
 
 function parseCoordinate(value: string, min: number, max: number) {
   if (value.trim() === "") {
@@ -212,6 +224,110 @@ function getAspectPreviewFrame(aspectRatio: number) {
   };
 }
 
+function formatPixelMeasure(value: number) {
+  return `${PIXEL_NUMBER_FORMATTER.format(value)} px`;
+}
+
+function formatPixelCount(value: number) {
+  return `${PIXEL_NUMBER_FORMATTER.format(value)} ピクセル`;
+}
+
+type CanvasSizePreviewProps = {
+  aspectRatio: number;
+  imageUrl: string;
+  width: number;
+  height: number;
+};
+
+function CanvasSizePreview({
+  aspectRatio,
+  imageUrl,
+  width,
+  height,
+}: CanvasSizePreviewProps) {
+  const safeWidth = Math.max(1, Math.round(width));
+  const safeHeight = Math.max(1, Math.round(height));
+  const pixelCount = safeWidth * safeHeight;
+  const safeAspectRatio =
+    Number.isFinite(aspectRatio) && aspectRatio > 0
+      ? aspectRatio
+      : safeWidth / safeHeight;
+  const viewBoxWidth = safeAspectRatio >= 1 ? safeAspectRatio * 100 : 100;
+  const viewBoxHeight = safeAspectRatio >= 1 ? 100 : 100 / safeAspectRatio;
+  const previewAspectRatioCssValue =
+    safeAspectRatio >= 1
+      ? `${safeAspectRatio} / 1`
+      : `1 / ${1 / safeAspectRatio}`;
+  const horizontalLineY = 9;
+  const verticalLineX = viewBoxWidth - 9;
+  const arrowHeadDepth = 3.2;
+  const arrowHeadHalfSpan = 2.4;
+  const style = {
+    "--wall-canvas-preview-aspect-ratio": previewAspectRatioCssValue,
+    "--wall-canvas-preview-width-label-top": `${(horizontalLineY / viewBoxHeight) * 100}%`,
+    "--wall-canvas-preview-height-label-left": `${(verticalLineX / viewBoxWidth) * 100}%`,
+  } as CSSProperties;
+
+  return (
+    <div className="wall-canvas-preview" style={style}>
+      <div className="wall-canvas-preview__surface">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className="wall-canvas-preview__image"
+          src={imageUrl}
+          alt="キャンバスサイズのプレビュー"
+        />
+        <div aria-hidden="true" className="wall-canvas-preview__scrim" />
+        <svg
+          aria-hidden="true"
+          className="wall-canvas-preview__overlay"
+          viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+        >
+          <line
+            className="wall-canvas-preview__measure-line"
+            x1="0"
+            x2={viewBoxWidth}
+            y1={horizontalLineY}
+            y2={horizontalLineY}
+          />
+          <polygon
+            className="wall-canvas-preview__measure-head"
+            points={`0,${horizontalLineY} ${arrowHeadDepth},${horizontalLineY - arrowHeadHalfSpan} ${arrowHeadDepth},${horizontalLineY + arrowHeadHalfSpan}`}
+          />
+          <polygon
+            className="wall-canvas-preview__measure-head"
+            points={`${viewBoxWidth},${horizontalLineY} ${viewBoxWidth - arrowHeadDepth},${horizontalLineY - arrowHeadHalfSpan} ${viewBoxWidth - arrowHeadDepth},${horizontalLineY + arrowHeadHalfSpan}`}
+          />
+          <line
+            className="wall-canvas-preview__measure-line"
+            x1={verticalLineX}
+            x2={verticalLineX}
+            y1="0"
+            y2={viewBoxHeight}
+          />
+          <polygon
+            className="wall-canvas-preview__measure-head"
+            points={`${verticalLineX},0 ${verticalLineX - arrowHeadHalfSpan},${arrowHeadDepth} ${verticalLineX + arrowHeadHalfSpan},${arrowHeadDepth}`}
+          />
+          <polygon
+            className="wall-canvas-preview__measure-head"
+            points={`${verticalLineX},${viewBoxHeight} ${verticalLineX - arrowHeadHalfSpan},${viewBoxHeight - arrowHeadDepth} ${verticalLineX + arrowHeadHalfSpan},${viewBoxHeight - arrowHeadDepth}`}
+          />
+        </svg>
+        <div className="wall-canvas-preview__dimension wall-canvas-preview__dimension--width">
+          <span>{formatPixelMeasure(safeWidth)}</span>
+        </div>
+        <div className="wall-canvas-preview__dimension wall-canvas-preview__dimension--height">
+          <span>{formatPixelMeasure(safeHeight)}</span>
+        </div>
+        <div className="wall-canvas-preview__total">
+          <span>{formatPixelCount(pixelCount)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StepNavigation({
   backLabel = "戻る",
   children,
@@ -244,6 +360,8 @@ export function NewWallRegistrationForm({
   mapTilerKey,
 }: NewWallRegistrationFormProps) {
   const router = useRouter();
+  const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [method, setMethod] = useState<RegistrationMethod | null>(null);
   const [step, setStep] = useState<WallStep>("method");
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
@@ -264,6 +382,7 @@ export function NewWallRegistrationForm({
     string | null
   >(null);
   const [messages, setMessages] = useState<string[]>([]);
+  const [uploadPhase, setUploadPhase] = useState<string | null>(null);
   const [rectifyPhase, setRectifyPhase] = useState<string | null>(null);
   const [aspectPhase, setAspectPhase] = useState<string | null>(null);
   const [submitPhase, setSubmitPhase] = useState<string | null>(null);
@@ -272,6 +391,13 @@ export function NewWallRegistrationForm({
   );
   const [success, setSuccess] = useState<CreateWallResponse | null>(null);
   const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      uploadAbortControllerRef.current?.abort();
+      uploadAbortControllerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedImage) {
@@ -316,6 +442,13 @@ export function NewWallRegistrationForm({
   const aspectPreviewFrame = getAspectPreviewFrame(aspectRatioValue);
   const latitude = parseCoordinate(values.latitude, -90, 90);
   const longitude = parseCoordinate(values.longitude, -180, 180);
+  const selectedLocation =
+    latitude !== null && longitude !== null
+      ? {
+          latitude,
+          longitude,
+        }
+      : null;
   const stepFlow = getStepFlow(method);
   const currentStepIndex = Math.max(0, stepFlow.indexOf(step));
   const totalSteps = stepFlow.length;
@@ -329,6 +462,7 @@ export function NewWallRegistrationForm({
   const progressDescription = hasDeterminateProgress
     ? `全${totalSteps}ステップ中${currentStepIndex + 1}ステップ目`
     : "登録方法を選択";
+  const isUploadProcessing = uploadPhase !== null;
   const canSubmit =
     Boolean(selectedImage) &&
     Boolean(effectiveRectifiedPreview) &&
@@ -339,7 +473,18 @@ export function NewWallRegistrationForm({
     !aspectPhase &&
     !submitPhase;
 
+  function cancelUploadProcessing() {
+    uploadAbortControllerRef.current?.abort();
+    uploadAbortControllerRef.current = null;
+    setUploadPhase(null);
+
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = "";
+    }
+  }
+
   function resetImagePipeline() {
+    cancelUploadProcessing();
     setSelectedImage(null);
     setRectifiedPreview(null);
     setAspectAdjustedPreview(null);
@@ -382,6 +527,10 @@ export function NewWallRegistrationForm({
     setMessages([]);
 
     if (previousStep) {
+      if (step === "upload" || previousStep === "upload") {
+        resetImagePipeline();
+      }
+
       setStep(previousStep);
     }
   }
@@ -413,8 +562,14 @@ export function NewWallRegistrationForm({
   }
 
   function handleDiscardRegistration() {
+    cancelUploadProcessing();
     setIsDiscardDialogOpen(false);
     leaveRegistration();
+  }
+
+  function handleOpenDiscardDialog() {
+    cancelUploadProcessing();
+    setIsDiscardDialogOpen(true);
   }
 
   async function handleNext() {
@@ -425,9 +580,12 @@ export function NewWallRegistrationForm({
       return;
     }
 
-    if (step === "region" && !rectifiedPreview) {
-      setMessages(["キャンバス範囲を確定してください。"]);
-      return;
+    if (step === "region") {
+      const confirmed = await ensureRectifiedPreview();
+
+      if (!confirmed) {
+        return;
+      }
     }
 
     if (step === "aspect") {
@@ -454,15 +612,21 @@ export function NewWallRegistrationForm({
   }
 
   async function handleImageSelection(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
     const file = event.target.files?.[0];
 
     if (!file) {
       return;
     }
 
+    uploadAbortControllerRef.current?.abort();
+    const uploadAbortController = new AbortController();
+    uploadAbortControllerRef.current = uploadAbortController;
+
     setMessages([]);
     setUploadIssues([]);
     setSuccess(null);
+    setUploadPhase("画像を処理しています…");
     setRectifyPhase(null);
     setAspectPhase(null);
     setSubmitPhase(null);
@@ -471,10 +635,29 @@ export function NewWallRegistrationForm({
     setScanLocationMessage(null);
 
     try {
-      const preparedImage = await prepareWallImageFile(file);
+      const preparedImage = await prepareWallImageFile(file, {
+        signal: uploadAbortController.signal,
+      });
+
+      if (
+        uploadAbortController.signal.aborted ||
+        uploadAbortControllerRef.current !== uploadAbortController
+      ) {
+        return;
+      }
+
+      setUploadPhase("画像を確認しています…");
       const inspection = await inspectWallImage(preparedImage.file, {
         originalFileSize: preparedImage.originalFileSize,
+        signal: uploadAbortController.signal,
       });
+
+      if (
+        uploadAbortController.signal.aborted ||
+        uploadAbortControllerRef.current !== uploadAbortController
+      ) {
+        return;
+      }
 
       if (inspection.errors.length > 0) {
         setSelectedImage(null);
@@ -483,7 +666,9 @@ export function NewWallRegistrationForm({
           ...inspection.errors,
           "別のファイルをアップロードしてください。",
         ]);
-        event.currentTarget.value = "";
+        uploadAbortControllerRef.current = null;
+        setUploadPhase(null);
+        input.value = "";
         return;
       }
 
@@ -504,7 +689,18 @@ export function NewWallRegistrationForm({
       );
       setCanvasLongSide(DEFAULT_CANVAS_SIZE);
       setAspectRatioValue(inspection.metadata.aspectRatio);
+      uploadAbortControllerRef.current = null;
+      setUploadPhase(null);
+      setStep("region");
     } catch (error) {
+      if (
+        isAbortError(error) ||
+        uploadAbortControllerRef.current !== uploadAbortController
+      ) {
+        return;
+      }
+
+      uploadAbortControllerRef.current = null;
       setSelectedImage(null);
       setUploadIssues([
         error instanceof Error
@@ -512,7 +708,8 @@ export function NewWallRegistrationForm({
           : "画像の読み込みに失敗しました。",
         "別のファイルをアップロードしてください。",
       ]);
-      event.currentTarget.value = "";
+      setUploadPhase(null);
+      input.value = "";
     }
   }
 
@@ -587,10 +784,14 @@ export function NewWallRegistrationForm({
     }
   }
 
-  async function handleGenerateRectified() {
+  async function ensureRectifiedPreview() {
+    if (rectifiedPreview) {
+      return true;
+    }
+
     if (!selectedImage) {
       setMessages(["先に壁画像を用意してください。"]);
-      return;
+      return false;
     }
 
     setMessages([]);
@@ -615,6 +816,7 @@ export function NewWallRegistrationForm({
         ),
       );
       setRectifyPhase(null);
+      return true;
     } catch (error) {
       setMessages([
         error instanceof Error
@@ -622,6 +824,7 @@ export function NewWallRegistrationForm({
           : "rectified の生成に失敗しました。",
       ]);
       setRectifyPhase(null);
+      return false;
     }
   }
 
@@ -632,7 +835,7 @@ export function NewWallRegistrationForm({
 
   async function confirmAspectRatio() {
     if (!rectifiedPreview) {
-      setMessages(["先に範囲を確定し、傾きを補正してください。"]);
+      setMessages(["先にキャンバス範囲を選択し、傾きを補正してください。"]);
       return false;
     }
 
@@ -686,7 +889,7 @@ export function NewWallRegistrationForm({
     }
 
     if (!effectiveRectifiedPreview) {
-      setMessages(["範囲を確定してください。"]);
+      setMessages(["キャンバス範囲を選択してください。"]);
       return;
     }
 
@@ -784,7 +987,9 @@ export function NewWallRegistrationForm({
       {registrationTopMessage ? (
         <div className="error-banner" style={{ marginBottom: 16 }}>
           <strong>{registrationTopMessage}</strong>
-          <div>スキャンを開始できないため、登録方法の選択画面に戻しました。</div>
+          <div>
+            スキャンを開始できないため、登録方法の選択画面に戻しました。
+          </div>
         </div>
       ) : null}
       <div className="registration-method-grid">
@@ -835,27 +1040,45 @@ export function NewWallRegistrationForm({
             写真をアップロード
           </h2>
           <p className="section-copy">
-            壁全体が入り、四隅が見えていて、極端に斜めすぎず、暗すぎない写真を選んでください。
+            壁全体が入った画像をアップロードしてください。
           </p>
         </div>
-        <div className="tag">JPG / PNG / WebP / HEIC / HEIF に対応</div>
+      </div>
+      <div className="flex items-center justify-center w-full relative">
+        {isUploadProcessing ? (
+          <div className="processing-overlay rounded-lg">
+            <div className="text-center">
+              <Spinner label={uploadPhase ?? undefined} size="lg" />
+            </div>
+          </div>
+        ) : null}
+        <label
+          htmlFor="dropzone-file"
+          className="flex flex-col items-center justify-center w-full h-64 border border-dashed rounded-lg cursor-pointer hover:bg-surface"
+        >
+          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            <UploadSimpleIcon size={40} />
+            <p className="mb-2">
+              クリックまたはドラッグ＆ドロップでアップロード
+            </p>
+            <p className="text-xs">対応ファイル形式: JPG, PNG, WebP, HEIC</p>
+          </div>
+          <input
+            id="dropzone-file"
+            type="file"
+            className="hidden"
+            accept={WALL_IMAGE_INPUT_ACCEPT}
+            onChange={handleImageSelection}
+            ref={uploadInputRef}
+          />
+        </label>
       </div>
 
-      <ul className="upload-hints">
-        <li>アスペクト比は 1:3 から 3:1 です。</li>
-        <li>短辺 1080px 以上、ファイルサイズは 10MB 以下です。</li>
-        <li>長辺が 3840px を超える場合は保存時に自動で縮小します。</li>
-        <li>HEIC / HEIF は必要に応じて JPEG へ変換して処理します。</li>
+      <ul className="mt-4 space-y-1">
+        <li>※ 短辺1080px以上、ファイルサイズ10MB 以下です。</li>
+        <li>※ アスペクト比は 1:3 から 3:1 です。</li>
+        <li>※ 暗すぎる画像では、ARが正しく動作しない可能性があります。</li>
       </ul>
-
-      <label className="field-label">
-        壁画像
-        <input
-          accept={WALL_IMAGE_INPUT_ACCEPT}
-          onChange={handleImageSelection}
-          type="file"
-        />
-      </label>
 
       {uploadIssues.length > 0 ? (
         <div className="error-banner" style={{ marginTop: 16 }}>
@@ -867,31 +1090,6 @@ export function NewWallRegistrationForm({
           </ul>
         </div>
       ) : null}
-
-      {selectedImage ? (
-        <div className="info-grid" style={{ marginTop: 16 }}>
-          <div className="metric-pill">
-            <strong>元サイズ</strong>
-            <span>
-              {selectedImage.width} x {selectedImage.height}px
-            </span>
-          </div>
-          <div className="metric-pill">
-            <strong>Original 保存</strong>
-            <span>
-              {selectedImage.willDownscaleOriginal
-                ? "3840px 以内へ縮小"
-                : "そのまま JPEG 化"}
-            </span>
-          </div>
-          <div className="metric-pill">
-            <strong>Thumbnail</strong>
-            <span>800 x 800px</span>
-          </div>
-        </div>
-      ) : null}
-
-      <StepNavigation nextDisabled={!selectedImage} onNext={handleNext} />
     </>
   );
 
@@ -943,49 +1141,15 @@ export function NewWallRegistrationForm({
             value={corners}
           />
 
-          <div className="inline-actions">
-            {!rectifiedPreview && (
-              <button
-                className="button button-primary w-full justify-center"
-                disabled={Boolean(rectifyPhase)}
-                onClick={handleGenerateRectified}
-                type="button"
-              >
-                {rectifyPhase
-                  ? "補正中…"
-                  : rectifiedPreview
-                    ? "補正完了"
-                    : "範囲を確定"}
-              </button>
-            )}
-          </div>
-
           {rectifyPhase ? <div className="notice">{rectifyPhase}</div> : null}
-
-          {rectifiedPreview ? (
-            <div className="preview-frame">
-              <div className="overflow-hidden bg-background">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  className="w-full"
-                  src={rectifiedPreview.previewUrl}
-                  alt="補正済み画像プレビュー"
-                />
-              </div>
-              <div className="notice">補正が完了しました。</div>
-            </div>
-          ) : (
-            <div className="notice">
-              四隅を選択し、「範囲を確定」を押してください。
-            </div>
-          )}
         </div>
       ) : (
         <div className="empty-state">先に壁画像を用意してください。</div>
       )}
 
       <StepNavigation
-        nextDisabled={!rectifiedPreview || Boolean(rectifyPhase)}
+        nextBusy={Boolean(rectifyPhase)}
+        nextDisabled={!selectedImage || Boolean(rectifyPhase)}
         onNext={handleNext}
       />
     </>
@@ -999,13 +1163,8 @@ export function NewWallRegistrationForm({
             アスペクト比を調整
           </h2>
           <p className="section-copy">
-            射影変換だけでは復元しきれない元の比率を、1:3 から 3:1
-            の範囲で補正します。
+            スライダーでアスペクト比を調節してください。
           </p>
-        </div>
-        <div className="metric-pill">
-          <strong>現在</strong>
-          <span>{formatAspectRatio(aspectRatioValue)}</span>
         </div>
       </div>
 
@@ -1031,8 +1190,8 @@ export function NewWallRegistrationForm({
           </div>
 
           <div className="stack-md">
-            <label className="">
-              比率 {formatAspectRatio(aspectRatioValue)}
+            <label>
+              <span>{formatAspectRatio(aspectRatioValue)}</span>
               <input
                 className="range-input"
                 max={ASPECT_RATIO_SLIDER_MAX}
@@ -1061,12 +1220,9 @@ export function NewWallRegistrationForm({
                 }
                 type="button"
               >
-                生成時の比率へ戻す
+                <ArrowCounterClockwiseIcon size={20} />
+                <span>元に戻す</span>
               </button>
-              <div className="metric-pill">
-                <strong>生成時</strong>
-                <span>{formatAspectRatio(rectifiedPreview.aspectRatio)}</span>
-              </div>
             </div>
 
             {aspectPhase ? <div className="notice">{aspectPhase}</div> : null}
@@ -1107,71 +1263,27 @@ export function NewWallRegistrationForm({
           href="/canvas-size-guide"
           target="_blank"
         >
-          サイズガイドを開く
+          キャンバスサイズの目安
         </Link>
       </div>
 
       {effectiveRectifiedPreview ? (
         <div className="stack-md">
-          <label className="field-label">
-            長辺 {canvasLongSide}px
-            <input
-              className="range-input"
-              max={CANVAS_MAX_SIZE}
-              min={CANVAS_MIN_SIZE}
-              onChange={(event) =>
-                setCanvasLongSide(Number(event.target.value))
-              }
-              type="range"
-              value={canvasLongSide}
-            />
-          </label>
+          <input
+            className="range-input"
+            max={CANVAS_MAX_SIZE}
+            min={CANVAS_MIN_SIZE}
+            onChange={(event) => setCanvasLongSide(Number(event.target.value))}
+            type="range"
+            value={canvasLongSide}
+          />
 
-          <div className="canvas-summary">
-            <div className="metric-pill">
-              <strong>確定サイズ</strong>
-              <span>
-                {canvasDimensions.width} x {canvasDimensions.height}px
-              </span>
-            </div>
-            <div className="metric-pill">
-              <strong>比率</strong>
-              <span>
-                {canvasDimensions.width / canvasDimensions.height > 1
-                  ? "横長"
-                  : canvasDimensions.width === canvasDimensions.height
-                    ? "正方形"
-                    : "縦長"}
-              </span>
-            </div>
-            <div className="metric-pill">
-              <strong>Rectified 基準</strong>
-              <span>
-                {effectiveRectifiedPreview.width} x{" "}
-                {effectiveRectifiedPreview.height}px
-              </span>
-            </div>
-          </div>
-
-          <div className="preview-frame">
-            <div className="preview-image">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={effectiveRectifiedPreview.previewUrl}
-                alt="rectified プレビュー"
-              />
-            </div>
-            <div className="canvas-proportion">
-              <div
-                className="canvas-proportion__shape"
-                style={{
-                  aspectRatio: `${canvasDimensions.width} / ${canvasDimensions.height}`,
-                }}
-              >
-                {canvasDimensions.width} x {canvasDimensions.height}
-              </div>
-            </div>
-          </div>
+          <CanvasSizePreview
+            aspectRatio={canvasAspectRatio}
+            imageUrl={effectiveRectifiedPreview.previewUrl}
+            width={canvasDimensions.width}
+            height={canvasDimensions.height}
+          />
         </div>
       ) : (
         <div className="empty-state">先に rectified を生成してください。</div>
@@ -1206,14 +1318,10 @@ export function NewWallRegistrationForm({
             onChange={(event) =>
               setValues((current) => ({ ...current, name: event.target.value }))
             }
-            placeholder="例: Tokyo Station Demo Wall"
+            placeholder="例：区民センターの案内板"
             value={values.name}
           />
         </label>
-
-        <div className="notice">
-          位置情報は壁の近くを示す目印です。最終的には地図中央の固定ピン位置で保存されます。
-        </div>
       </div>
 
       <input
@@ -1251,14 +1359,7 @@ export function NewWallRegistrationForm({
             longitude: formatCoordinate(nextLocation.longitude),
           }))
         }
-        value={
-          latitude !== null && longitude !== null
-            ? {
-                latitude,
-                longitude,
-              }
-            : null
-        }
+        value={selectedLocation}
       />
 
       <StepNavigation
@@ -1277,52 +1378,64 @@ export function NewWallRegistrationForm({
     <>
       <div className="section-topline">
         <div className="stack-sm">
-          <h2 className="section-title text-2xl font-bold">登録内容を送信</h2>
+          <h2 className="section-title text-2xl font-bold">登録内容を確認</h2>
           <p className="section-copy">
-            API には既存の <span className="mono">POST /api/walls</span>{" "}
-            を使い、フロント側で整えた 3種類の画像を multipart で送ります。
+            登録はまだ完了していません。入力内容に間違いなければ「登録する」ボタンをクリックしてください。
           </p>
         </div>
       </div>
 
-      <div className="info-grid" style={{ marginBottom: 16 }}>
-        <div className="metric-pill">
-          <strong>登録方法</strong>
-          <span>{method === "scan" ? "スキャン" : "画像アップロード"}</span>
-        </div>
-        <div className="metric-pill">
-          <strong>壁名</strong>
-          <span>{values.name.trim()}</span>
-        </div>
-        <div className="metric-pill">
-          <strong>位置</strong>
-          <span>
-            {latitude !== null && longitude !== null
-              ? `${formatCoordinate(latitude)}, ${formatCoordinate(longitude)}`
-              : "未設定"}
-          </span>
-        </div>
-        <div className="metric-pill">
-          <strong>Canvas</strong>
-          <span>
-            {canvasDimensions.width} x {canvasDimensions.height}px
-          </span>
-        </div>
-        <div className="metric-pill">
-          <strong>Rectified</strong>
-          <span>
-            {effectiveRectifiedPreview
-              ? `${effectiveRectifiedPreview.width} x ${effectiveRectifiedPreview.height}px`
-              : "未生成"}
-          </span>
-        </div>
+      <div className="wall-review" style={{ marginBottom: 16 }}>
+        <section className="section-card wall-review__section">
+          <div className="stack-sm">
+            <h3 className="wall-review__section-title">壁名</h3>
+            <p className="wall-review__name">{values.name.trim()}</p>
+          </div>
+        </section>
+
+        <section className="section-card wall-review__section">
+          <div className="stack-sm">
+            <div className="stack-sm">
+              <h3 className="wall-review__section-title">位置情報</h3>
+            </div>
+            <LocationPreviewMap
+              mapTilerKey={mapTilerKey}
+              value={selectedLocation}
+            />
+          </div>
+        </section>
+
+        <section className="section-card wall-review__section">
+          <div className="stack-sm">
+            <div className="stack-sm">
+              <h3 className="wall-review__section-title">壁画像とサイズ</h3>
+              <p className="muted-copy">
+                {canvasDimensions.width} x {canvasDimensions.height}px
+                のキャンバスとして登録されます。
+              </p>
+            </div>
+
+            {effectiveRectifiedPreview ? (
+              <CanvasSizePreview
+                aspectRatio={canvasAspectRatio}
+                imageUrl={effectiveRectifiedPreview.previewUrl}
+                width={canvasDimensions.width}
+                height={canvasDimensions.height}
+              />
+            ) : (
+              <div className="empty-state">
+                先に壁画像とキャンバス設定を完了してください。
+              </div>
+            )}
+          </div>
+        </section>
       </div>
 
       {submitPhase ? <div className="notice">{submitPhase}</div> : null}
 
       <div className="step-navigation">
         <button
-          className="button button-secondary"
+          className="button button-secondary w-full justify-center"
           onClick={goBack}
           type="button"
         >
@@ -1330,15 +1443,12 @@ export function NewWallRegistrationForm({
         </button>
         <div className="inline-actions">
           <button
-            className="button button-primary"
+            className="button button-primary w-full justify-center"
             disabled={!canSubmit}
             type="submit"
           >
-            {submitPhase ? "送信中…" : "壁を登録する"}
+            {submitPhase ? "送信中…" : "登録する"}
           </button>
-          <Link className="button button-secondary" href="/">
-            一覧へ戻る
-          </Link>
         </div>
       </div>
     </>
@@ -1366,7 +1476,7 @@ export function NewWallRegistrationForm({
           success ? null : (
             <button
               className="site-header__control site-header__control--text"
-              onClick={() => setIsDiscardDialogOpen(true)}
+              onClick={handleOpenDiscardDialog}
               type="button"
             >
               キャンセル
@@ -1375,7 +1485,11 @@ export function NewWallRegistrationForm({
         }
       />
       {renderProgress()}
-      <form className="new-wall-registration-form" onSubmit={handleSubmit}>
+      <form
+        aria-busy={isUploadProcessing}
+        className="new-wall-registration-form"
+        onSubmit={handleSubmit}
+      >
         {success ? (
           <div className="success-banner">
             <strong>{success.name} を登録しました。</strong>

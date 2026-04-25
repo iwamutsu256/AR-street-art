@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-import type { CornerCoordinate } from '@street-art/shared';
-import { getDefaultCornerCoordinates } from '../../lib/walls';
+import { useEffect, useRef, useState } from "react";
+import type { CornerCoordinate } from "@street-art/shared";
+import { getDefaultCornerCoordinates } from "../../lib/walls";
 
 const JPEG_QUALITY = 0.9;
 
 const SCAN_GUIDANCE = [
-  '正面から撮影してください',
-  '四隅を入れてください',
-  '長方形の壁のみ登録可能です',
+  "正面から撮影してください",
+  "四隅を入れてください",
+  "長方形の壁のみ登録可能です",
 ];
 
 export type ScannedWallCapture = {
@@ -21,41 +21,110 @@ export type ScannedWallCapture = {
 
 type WallScannerProps = {
   onCapture: (capture: ScannedWallCapture) => void;
+  onResolutionInsufficient: () => void;
 };
+
+const RESOLUTION_CONSTRAINT_NAMES = new Set([
+  "OverconstrainedError",
+  "ConstraintNotSatisfiedError",
+]);
+
+function isResolutionConstraintError(error: unknown) {
+  if (!error || typeof error !== "object" || !("name" in error)) {
+    return false;
+  }
+
+  if (
+    typeof error.name !== "string" ||
+    !RESOLUTION_CONSTRAINT_NAMES.has(error.name)
+  ) {
+    return false;
+  }
+
+  if (!("constraint" in error) || typeof error.constraint !== "string") {
+    return true;
+  }
+
+  return error.constraint === "width" || error.constraint === "height";
+}
+
+async function shouldHandleAsResolutionError(error: unknown) {
+  if (isResolutionConstraintError(error)) {
+    return true;
+  }
+
+  if (
+    !error ||
+    typeof error !== "object" ||
+    !("name" in error) ||
+    error.name !== "NotFoundError" ||
+    !navigator.mediaDevices?.enumerateDevices
+  ) {
+    return false;
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+
+    return devices.some((device) => device.kind === "videoinput");
+  } catch {
+    return false;
+  }
+}
 
 function canvasToJpegFile(canvas: HTMLCanvasElement) {
   return new Promise<File>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
         if (!blob) {
-          reject(new Error('スキャン画像を書き出せませんでした。'));
+          reject(new Error("スキャン画像を書き出せませんでした。"));
           return;
         }
 
-        resolve(new File([blob], `wall-scan-${Date.now()}.jpg`, { type: 'image/jpeg' }));
+        resolve(
+          new File([blob], `wall-scan-${Date.now()}.jpg`, {
+            type: "image/jpeg",
+          }),
+        );
       },
-      'image/jpeg',
-      JPEG_QUALITY
+      "image/jpeg",
+      JPEG_QUALITY,
     );
   });
 }
 
-export function WallScanner({ onCapture }: WallScannerProps) {
+export function WallScanner({
+  onCapture,
+  onResolutionInsufficient,
+}: WallScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const onCaptureRef = useRef(onCapture);
+  const onResolutionInsufficientRef = useRef(onResolutionInsufficient);
   const capturedRef = useRef(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null);
+  const [videoSize, setVideoSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
 
   useEffect(() => {
     onCaptureRef.current = onCapture;
   }, [onCapture]);
 
+  useEffect(() => {
+    onResolutionInsufficientRef.current = onResolutionInsufficient;
+  }, [onResolutionInsufficient]);
+
   async function captureCurrentFrame() {
     const video = videoRef.current;
 
-    if (!video || !video.videoWidth || !video.videoHeight || capturedRef.current) {
+    if (
+      !video ||
+      !video.videoWidth ||
+      !video.videoHeight ||
+      capturedRef.current
+    ) {
       return;
     }
 
@@ -63,11 +132,11 @@ export function WallScanner({ onCapture }: WallScannerProps) {
     setIsCapturing(true);
 
     try {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
 
       if (!context) {
-        throw new Error('Canvas 2D context could not be created.');
+        throw new Error("Canvas 2D context could not be created.");
       }
 
       canvas.width = video.videoWidth;
@@ -84,7 +153,11 @@ export function WallScanner({ onCapture }: WallScannerProps) {
       });
     } catch (error) {
       capturedRef.current = false;
-      setCameraError(error instanceof Error ? error.message : 'スキャン画像の撮影に失敗しました。');
+      setCameraError(
+        error instanceof Error
+          ? error.message
+          : "スキャン画像の撮影に失敗しました。",
+      );
       setIsCapturing(false);
     }
   }
@@ -95,7 +168,7 @@ export function WallScanner({ onCapture }: WallScannerProps) {
 
     async function startCamera() {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError('このブラウザではカメラを利用できません。');
+        setCameraError("このブラウザではカメラを利用できません。");
         return;
       }
 
@@ -103,9 +176,10 @@ export function WallScanner({ onCapture }: WallScannerProps) {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
-            facingMode: { ideal: 'environment' },
-            height: { ideal: 1080 },
-            width: { ideal: 1920 },
+            facingMode: { ideal: "environment" },
+            height: { min: 1080 },
+            width: { min: 1080 },
+            aspectRatio: 1,
           },
         });
 
@@ -124,8 +198,15 @@ export function WallScanner({ onCapture }: WallScannerProps) {
         await video.play();
         setVideoSize({ width: video.videoWidth, height: video.videoHeight });
       } catch (error) {
+        if (await shouldHandleAsResolutionError(error)) {
+          onResolutionInsufficientRef.current();
+          return;
+        }
+
         setCameraError(
-          error instanceof Error ? error.message : 'カメラを開始できませんでした。'
+          error instanceof Error
+            ? error.message
+            : "カメラを開始できませんでした。",
         );
       }
     }

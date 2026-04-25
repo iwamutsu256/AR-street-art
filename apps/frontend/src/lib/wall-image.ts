@@ -1,25 +1,25 @@
-'use client';
+"use client";
 
-import type { CornerCoordinate } from '@street-art/shared';
-import { getCornerAspectRatio } from './walls';
+import type { CornerCoordinate } from "@street-art/shared";
+import { getCornerAspectRatio } from "./walls";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MIN_SHORT_EDGE = 1080;
 const MAX_ORIGINAL_LONG_EDGE = 3840;
 const THUMBNAIL_SIZE = 800;
 const RECTIFIED_MAX_LONG_EDGE = 1920;
-const JPEG_MIME_TYPE = 'image/jpeg';
+const JPEG_MIME_TYPE = "image/jpeg";
 const HEIC_MIME_TYPES = new Set([
-  'image/heic',
-  'image/heif',
-  'image/heic-sequence',
-  'image/heif-sequence',
-  'image/x-heic',
-  'image/x-heif',
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+  "image/x-heic",
+  "image/x-heif",
 ]);
 
 export const WALL_IMAGE_INPUT_ACCEPT =
-  'image/*,.heic,.heif,.HEIC,.HEIF,image/heic,image/heif,image/heic-sequence,image/heif-sequence';
+  "image/*,.heic,.heif,.HEIC,.HEIF,image/heic,image/heif,image/heic-sequence,image/heif-sequence";
 
 export type WallImageMetadata = {
   width: number;
@@ -40,81 +40,151 @@ type PreparedWallImageFile = {
   originalFileSize: number;
 };
 
+type WallImageAbortOptions = {
+  signal?: AbortSignal;
+};
+
 function createCanvas(width: number, height: number) {
-  const canvas = document.createElement('canvas');
+  const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   return canvas;
 }
 
-function getContext2d(canvas: HTMLCanvasElement, options?: CanvasRenderingContext2DSettings) {
-  const context = canvas.getContext('2d', options);
+function getContext2d(
+  canvas: HTMLCanvasElement,
+  options?: CanvasRenderingContext2DSettings,
+) {
+  const context = canvas.getContext("2d", options);
 
   if (!context) {
-    throw new Error('Canvas 2D context could not be created.');
+    throw new Error("Canvas 2D context could not be created.");
   }
 
   return context;
 }
 
-function loadImageFromUrl(url: string) {
+function createAbortError() {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+function loadImageFromUrl(url: string, options?: WallImageAbortOptions) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
+    const signal = options?.signal;
     const image = new Image();
-    image.decoding = 'async';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('画像の読み込みに失敗しました。'));
+    let settled = false;
+
+    throwIfAborted(signal);
+
+    function cleanup() {
+      image.onload = null;
+      image.onerror = null;
+      signal?.removeEventListener("abort", handleAbort);
+    }
+
+    function handleAbort() {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      image.src = "";
+      reject(createAbortError());
+    }
+
+    image.decoding = "async";
+
+    image.onload = () => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      resolve(image);
+    };
+    image.onerror = () => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      reject(new Error("画像の読み込みに失敗しました。"));
+    };
+
+    signal?.addEventListener("abort", handleAbort, { once: true });
     image.src = url;
   });
 }
 
-async function loadImageFromFile(file: File) {
+async function loadImageFromFile(file: File, options?: WallImageAbortOptions) {
   const objectUrl = URL.createObjectURL(file);
 
   try {
-    return await loadImageFromUrl(objectUrl);
+    return await loadImageFromUrl(objectUrl, options);
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 }
 
-function canvasToJpegFile(canvas: HTMLCanvasElement, name: string, quality = 0.86) {
+function canvasToJpegFile(
+  canvas: HTMLCanvasElement,
+  name: string,
+  quality = 0.86,
+) {
   return new Promise<File>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
         if (!blob) {
-          reject(new Error('画像を書き出せませんでした。'));
+          reject(new Error("画像を書き出せませんでした。"));
           return;
         }
 
         resolve(new File([blob], name, { type: JPEG_MIME_TYPE }));
       },
       JPEG_MIME_TYPE,
-      quality
+      quality,
     );
   });
 }
 
-async function canLoadImageFromFile(file: File) {
+async function canLoadImageFromFile(file: File, options?: WallImageAbortOptions) {
   try {
-    await loadImageFromFile(file);
+    await loadImageFromFile(file, options);
     return true;
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+
     return false;
   }
 }
 
 function getFileExtension(fileName: string) {
-  const dotIndex = fileName.lastIndexOf('.');
+  const dotIndex = fileName.lastIndexOf(".");
 
   if (dotIndex < 0) {
-    return '';
+    return "";
   }
 
   return fileName.slice(dotIndex + 1).toLowerCase();
 }
 
 function replaceFileExtension(fileName: string, nextExtension: string) {
-  const dotIndex = fileName.lastIndexOf('.');
+  const dotIndex = fileName.lastIndexOf(".");
 
   if (dotIndex < 0) {
     return `${fileName}.${nextExtension}`;
@@ -129,28 +199,39 @@ function isHeicLikeFile(file: File) {
   }
 
   const extension = getFileExtension(file.name);
-  return extension === 'heic' || extension === 'heif';
+  return extension === "heic" || extension === "heif";
 }
 
-async function convertHeicToJpegFile(file: File) {
-  const { heicTo } = await import('heic-to');
+async function convertHeicToJpegFile(
+  file: File,
+  options?: WallImageAbortOptions,
+) {
+  throwIfAborted(options?.signal);
+  const { heicTo } = await import("heic-to");
+  throwIfAborted(options?.signal);
   const convertedBlob = await heicTo({
     blob: file,
     quality: 0.9,
     type: JPEG_MIME_TYPE,
   });
+  throwIfAborted(options?.signal);
 
   if (!(convertedBlob instanceof Blob)) {
-    throw new Error('HEIC / HEIF 画像の変換に失敗しました。');
+    throw new Error("HEIC / HEIF 画像の変換に失敗しました。");
   }
 
-  return new File([convertedBlob], replaceFileExtension(file.name, 'jpg'), {
+  return new File([convertedBlob], replaceFileExtension(file.name, "jpg"), {
     type: JPEG_MIME_TYPE,
     lastModified: file.lastModified,
   });
 }
 
-export async function prepareWallImageFile(file: File): Promise<PreparedWallImageFile> {
+export async function prepareWallImageFile(
+  file: File,
+  options?: WallImageAbortOptions,
+): Promise<PreparedWallImageFile> {
+  throwIfAborted(options?.signal);
+
   if (!isHeicLikeFile(file)) {
     return {
       file,
@@ -158,7 +239,7 @@ export async function prepareWallImageFile(file: File): Promise<PreparedWallImag
     };
   }
 
-  if (await canLoadImageFromFile(file)) {
+  if (await canLoadImageFromFile(file, options)) {
     return {
       file,
       originalFileSize: file.size,
@@ -166,17 +247,21 @@ export async function prepareWallImageFile(file: File): Promise<PreparedWallImag
   }
 
   try {
-    const convertedFile = await convertHeicToJpegFile(file);
+    const convertedFile = await convertHeicToJpegFile(file, options);
 
     return {
       file: convertedFile,
       originalFileSize: file.size,
     };
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+
     throw new Error(
       error instanceof Error && error.message
         ? error.message
-        : 'HEIC / HEIF 画像の変換に失敗しました。お使いのブラウザではこの形式を処理できない可能性があります。'
+        : "HEIC / HEIF 画像の変換に失敗しました。お使いのブラウザではこの形式を処理できない可能性があります。",
     );
   }
 }
@@ -215,7 +300,7 @@ function bilinearCoordinate(
   bottomRight: number,
   bottomLeft: number,
   u: number,
-  v: number
+  v: number,
 ) {
   return (
     topLeft * (1 - u) * (1 - v) +
@@ -225,7 +310,13 @@ function bilinearCoordinate(
   );
 }
 
-function sampleBilinear(data: Uint8ClampedArray, width: number, height: number, x: number, y: number) {
+function sampleBilinear(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+) {
   const clampedX = Math.min(Math.max(x, 0), width - 1);
   const clampedY = Math.min(Math.max(y, 0), height - 1);
   const x0 = Math.floor(clampedX);
@@ -242,9 +333,11 @@ function sampleBilinear(data: Uint8ClampedArray, width: number, height: number, 
 
   return [0, 1, 2, 3].map((channel) => {
     const top =
-      data[topLeftIndex + channel] * (1 - wx) + data[topRightIndex + channel] * wx;
+      data[topLeftIndex + channel] * (1 - wx) +
+      data[topRightIndex + channel] * wx;
     const bottom =
-      data[bottomLeftIndex + channel] * (1 - wx) + data[bottomRightIndex + channel] * wx;
+      data[bottomLeftIndex + channel] * (1 - wx) +
+      data[bottomRightIndex + channel] * wx;
     return Math.round(top * (1 - wy) + bottom * wy);
   });
 }
@@ -253,7 +346,7 @@ function renderOriginalImage(image: HTMLImageElement) {
   const { width, height } = getLimitedSize(
     image.naturalWidth,
     image.naturalHeight,
-    MAX_ORIGINAL_LONG_EDGE
+    MAX_ORIGINAL_LONG_EDGE,
   );
   const canvas = createCanvas(width, height);
   const context = getContext2d(canvas);
@@ -264,7 +357,8 @@ function renderOriginalImage(image: HTMLImageElement) {
 function renderThumbnailImage(image: HTMLImageElement) {
   const canvas = createCanvas(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
   const context = getContext2d(canvas);
-  const scale = THUMBNAIL_SIZE / Math.min(image.naturalWidth, image.naturalHeight);
+  const scale =
+    THUMBNAIL_SIZE / Math.min(image.naturalWidth, image.naturalHeight);
   const drawWidth = image.naturalWidth * scale;
   const drawHeight = image.naturalHeight * scale;
   const offsetX = (THUMBNAIL_SIZE - drawWidth) / 2;
@@ -276,23 +370,33 @@ function renderThumbnailImage(image: HTMLImageElement) {
 
 function renderRectifiedImage(
   image: HTMLImageElement,
-  corners: CornerCoordinate[]
+  corners: CornerCoordinate[],
 ) {
   const aspectRatio = getCornerAspectRatio(corners);
   const targetLongEdge = Math.min(
     RECTIFIED_MAX_LONG_EDGE,
-    Math.max(image.naturalWidth, image.naturalHeight)
+    Math.max(image.naturalWidth, image.naturalHeight),
   );
   const targetSize = getAspectRatioSize(aspectRatio, targetLongEdge);
 
   const sourceCanvas = createCanvas(image.naturalWidth, image.naturalHeight);
-  const sourceContext = getContext2d(sourceCanvas, { willReadFrequently: true });
+  const sourceContext = getContext2d(sourceCanvas, {
+    willReadFrequently: true,
+  });
   sourceContext.drawImage(image, 0, 0);
 
-  const sourceImage = sourceContext.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const sourceImage = sourceContext.getImageData(
+    0,
+    0,
+    sourceCanvas.width,
+    sourceCanvas.height,
+  );
   const resultCanvas = createCanvas(targetSize.width, targetSize.height);
   const resultContext = getContext2d(resultCanvas);
-  const output = resultContext.createImageData(targetSize.width, targetSize.height);
+  const output = resultContext.createImageData(
+    targetSize.width,
+    targetSize.height,
+  );
 
   for (let y = 0; y < targetSize.height; y += 1) {
     const v = targetSize.height === 1 ? 0 : y / (targetSize.height - 1);
@@ -305,7 +409,7 @@ function renderRectifiedImage(
         corners[2].x,
         corners[3].x,
         u,
-        v
+        v,
       );
       const sourceY = bilinearCoordinate(
         corners[0].y,
@@ -313,14 +417,14 @@ function renderRectifiedImage(
         corners[2].y,
         corners[3].y,
         u,
-        v
+        v,
       );
       const [red, green, blue, alpha] = sampleBilinear(
         sourceImage.data,
         sourceImage.width,
         sourceImage.height,
         sourceX,
-        sourceY
+        sourceY,
       );
       const targetIndex = (y * targetSize.width + x) * 4;
       output.data[targetIndex] = red;
@@ -336,29 +440,31 @@ function renderRectifiedImage(
 
 export async function inspectWallImage(
   file: File,
-  options?: {
+  options?: WallImageAbortOptions & {
     originalFileSize?: number;
-  }
+  },
 ) {
   const errors: string[] = [];
 
   const originalFileSize = options?.originalFileSize ?? file.size;
 
   if (originalFileSize > MAX_UPLOAD_BYTES) {
-    errors.push('画像ファイルは 10MB 以下にしてください。');
+    errors.push("画像ファイルは 10MB 以下にしてください。");
   }
 
-  const image = await loadImageFromFile(file);
+  throwIfAborted(options?.signal);
+  const image = await loadImageFromFile(file, options);
+  throwIfAborted(options?.signal);
   const width = image.naturalWidth;
   const height = image.naturalHeight;
   const aspectRatio = width / height;
 
   if (aspectRatio < 1 / 3 || aspectRatio > 3) {
-    errors.push('アスペクト比は 1:3 から 3:1 の範囲にしてください。');
+    errors.push("アスペクト比は 1:3 から 3:1 の範囲にしてください。");
   }
 
   if (Math.min(width, height) < MIN_SHORT_EDGE) {
-    errors.push(`短辺 ${MIN_SHORT_EDGE}px 以上の画像を選択してください。`);
+    errors.push(`短辺${MIN_SHORT_EDGE}px以上の画像を選択してください。`);
   }
 
   return {
@@ -382,8 +488,8 @@ export async function buildWallImageFiles(options: {
   const thumbnailCanvas = renderThumbnailImage(image);
 
   const [originalImageFile, thumbnailImageFile] = await Promise.all([
-    canvasToJpegFile(originalCanvas, 'original.jpg', 0.88),
-    canvasToJpegFile(thumbnailCanvas, 'thumbnail.jpg', 0.84),
+    canvasToJpegFile(originalCanvas, "original.jpg", 0.88),
+    canvasToJpegFile(thumbnailCanvas, "thumbnail.jpg", 0.84),
   ]);
 
   return {
@@ -399,7 +505,11 @@ export async function buildRectifiedImageAsset(options: {
 }): Promise<RectifiedImageAsset> {
   const image = await loadImageFromFile(options.file);
   const rectifiedCanvas = renderRectifiedImage(image, options.corners);
-  const rectifiedImageFile = await canvasToJpegFile(rectifiedCanvas, 'rectified.jpg', 0.88);
+  const rectifiedImageFile = await canvasToJpegFile(
+    rectifiedCanvas,
+    "rectified.jpg",
+    0.88,
+  );
 
   return {
     rectifiedImageFile,
@@ -420,7 +530,7 @@ export async function buildAspectAdjustedRectifiedImageAsset(options: {
       : image.naturalWidth / image.naturalHeight;
   const targetLongEdge = Math.min(
     RECTIFIED_MAX_LONG_EDGE,
-    Math.max(image.naturalWidth, image.naturalHeight)
+    Math.max(image.naturalWidth, image.naturalHeight),
   );
   const targetSize = getAspectRatioSize(safeAspectRatio, targetLongEdge);
   const canvas = createCanvas(targetSize.width, targetSize.height);
@@ -428,7 +538,11 @@ export async function buildAspectAdjustedRectifiedImageAsset(options: {
 
   context.drawImage(image, 0, 0, targetSize.width, targetSize.height);
 
-  const rectifiedImageFile = await canvasToJpegFile(canvas, 'rectified-adjusted.jpg', 0.88);
+  const rectifiedImageFile = await canvasToJpegFile(
+    canvas,
+    "rectified-adjusted.jpg",
+    0.88,
+  );
 
   return {
     rectifiedImageFile,
