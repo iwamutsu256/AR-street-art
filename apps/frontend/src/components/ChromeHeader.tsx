@@ -11,16 +11,12 @@ const navItems = [
     label: "マップ",
   },
   {
-    href: "/walls",
-    label: "カベ",
-  },
-  {
     href: "/settings",
     label: "設定",
   },
   {
     href: "/walls/new",
-    label: "新規壁登録",
+    label: "カベを追加",
     primary: true,
   },
 ];

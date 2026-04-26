@@ -55,7 +55,6 @@ const PIXEL_NUMBER_FORMATTER = new Intl.NumberFormat("ja-JP");
 
 type RegistrationMethod = "scan" | "upload";
 type WallStep =
-  | "method"
   | "scan"
   | "upload"
   | "region"
@@ -85,6 +84,7 @@ type WallFormValues = {
 
 type NewWallRegistrationFormProps = {
   mapTilerKey: string;
+  registrationMethod: RegistrationMethod;
 };
 
 type StepNavigationProps = {
@@ -148,24 +148,12 @@ function extractErrorMessages(payload: unknown) {
   return messages.length > 0 ? messages : ["壁の登録に失敗しました。"];
 }
 
-function getStepFlow(method: RegistrationMethod | null): WallStep[] {
+function getStepFlow(method: RegistrationMethod): WallStep[] {
   if (method === "scan") {
-    return ["method", "scan", "region", "canvas", "details", "review"];
+    return ["scan", "region", "canvas", "details", "review"];
   }
 
-  if (method === "upload") {
-    return [
-      "method",
-      "upload",
-      "region",
-      "aspect",
-      "canvas",
-      "details",
-      "review",
-    ];
-  }
-
-  return ["method"];
+  return ["upload", "region", "aspect", "canvas", "details", "review"];
 }
 
 function formatAspectRatio(aspectRatio: number) {
@@ -358,12 +346,12 @@ function StepNavigation({
 
 export function NewWallRegistrationForm({
   mapTilerKey,
+  registrationMethod,
 }: NewWallRegistrationFormProps) {
   const router = useRouter();
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
-  const [method, setMethod] = useState<RegistrationMethod | null>(null);
-  const [step, setStep] = useState<WallStep>("method");
+  const [step, setStep] = useState<WallStep>(registrationMethod);
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(
     null,
   );
@@ -378,9 +366,6 @@ export function NewWallRegistrationForm({
   const [aspectRatioValue, setAspectRatioValue] = useState(1);
   const [values, setValues] = useState<WallFormValues>(initialValues);
   const [uploadIssues, setUploadIssues] = useState<string[]>([]);
-  const [registrationTopMessage, setRegistrationTopMessage] = useState<
-    string | null
-  >(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [uploadPhase, setUploadPhase] = useState<string | null>(null);
   const [rectifyPhase, setRectifyPhase] = useState<string | null>(null);
@@ -430,7 +415,7 @@ export function NewWallRegistrationForm({
   }, [aspectAdjustedPreview]);
 
   const effectiveRectifiedPreview =
-    method === "upload"
+    registrationMethod === "upload"
       ? (aspectAdjustedPreview ?? rectifiedPreview)
       : rectifiedPreview;
   const canvasAspectRatio = effectiveRectifiedPreview?.aspectRatio ?? 1;
@@ -449,10 +434,10 @@ export function NewWallRegistrationForm({
           longitude,
         }
       : null;
-  const stepFlow = getStepFlow(method);
+  const stepFlow = getStepFlow(registrationMethod);
   const currentStepIndex = Math.max(0, stepFlow.indexOf(step));
   const totalSteps = stepFlow.length;
-  const hasDeterminateProgress = method !== null && totalSteps > 1;
+  const hasDeterminateProgress = totalSteps > 1;
   const progressPercent = hasDeterminateProgress
     ? (currentStepIndex / (totalSteps - 1)) * 100
     : 0;
@@ -499,28 +484,6 @@ export function NewWallRegistrationForm({
     setScanLocationMessage(null);
   }
 
-  function beginRegistration(nextMethod: RegistrationMethod) {
-    resetImagePipeline();
-    setRegistrationTopMessage(null);
-    setMethod(nextMethod);
-    setStep(nextMethod);
-    setSuccess(null);
-    setValues(initialValues);
-  }
-
-  function returnToRegistrationTop(message: string) {
-    resetImagePipeline();
-    setRegistrationTopMessage(message);
-    setMethod(null);
-    setStep("method");
-    setSuccess(null);
-    setValues(initialValues);
-
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-  }
-
   function goBack() {
     const previousStep = stepFlow[currentStepIndex - 1];
 
@@ -544,7 +507,7 @@ export function NewWallRegistrationForm({
   }
 
   function leaveRegistration() {
-    router.push("/walls");
+    router.replace("/walls/new");
   }
 
   function handleHeaderBack() {
@@ -747,7 +710,6 @@ export function NewWallRegistrationForm({
   function handleScanCapture(capture: ScannedWallCapture) {
     const nextPreviewUrl = URL.createObjectURL(capture.file);
 
-    setMethod("scan");
     setMessages([]);
     setUploadIssues([]);
     setSuccess(null);
@@ -974,64 +936,6 @@ export function NewWallRegistrationForm({
     </div>
   );
 
-  const renderMethodStep = () => (
-    <>
-      <div className="section-topline">
-        <div className="stack-sm">
-          <h2 className="section-title text-2xl font-bold">登録方法を選択</h2>
-          <p className="section-copy">
-            カメラで壁面をスキャンするか、手元の画像をアップロードして登録します。
-          </p>
-        </div>
-      </div>
-      {registrationTopMessage ? (
-        <div className="error-banner" style={{ marginBottom: 16 }}>
-          <strong>{registrationTopMessage}</strong>
-          <div>
-            スキャンを開始できないため、登録方法の選択画面に戻しました。
-          </div>
-        </div>
-      ) : null}
-      <div className="registration-method-grid">
-        <button
-          className="method-button h-40"
-          onClick={() => beginRegistration("scan")}
-          type="button"
-        >
-          <svg
-            aria-hidden="true"
-            className="method-button__icon"
-            viewBox="0 0 24 24"
-          >
-            <path d="M4 7.5h3.1L8.7 5h6.6l1.6 2.5H20a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Zm8 9a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-1.6a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8Z" />
-          </svg>
-          <span>
-            <strong>スキャンで登録</strong>
-            <small>カメラで壁を正面から手動撮影します。</small>
-          </span>
-        </button>
-
-        <button
-          className="method-button"
-          onClick={() => beginRegistration("upload")}
-          type="button"
-        >
-          <svg
-            aria-hidden="true"
-            className="method-button__icon"
-            viewBox="0 0 24 24"
-          >
-            <path d="M11 16.2V7.6l-3 3-1.4-1.4L12 3.8l5.4 5.4-1.4 1.4-3-3v8.6h-2ZM5 20.2a3 3 0 0 1-3-3v-2.4h2v2.4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2.4h2v2.4a3 3 0 0 1-3 3H5Z" />
-          </svg>
-          <span>
-            <strong>画像をアップロードして登録</strong>
-            <small>既存の画像補正フローを使います。</small>
-          </span>
-        </button>
-      </div>
-    </>
-  );
-
   const renderUploadStep = () => (
     <>
       <div className="section-topline">
@@ -1105,7 +1009,7 @@ export function NewWallRegistrationForm({
       <WallScanner
         onCapture={handleScanCapture}
         onResolutionInsufficient={() =>
-          returnToRegistrationTop("カメラの解像度が足りません")
+          router.replace("/walls/new?reason=scan-resolution-insufficient")
         }
       />
 
@@ -1461,7 +1365,7 @@ export function NewWallRegistrationForm({
           <button
             aria-label={
               success || currentStepIndex === 0
-                ? "カベへ戻る"
+                ? "登録方法選択へ戻る"
                 : "前のステップへ戻る"
             }
             className="site-header__control site-header__control--icon"
@@ -1506,8 +1410,8 @@ export function NewWallRegistrationForm({
                 >
                   壁詳細へ
                 </Link>
-                <Link className="button button-secondary" href="/">
-                  壁一覧へ戻る
+                <Link className="button button-secondary" href="/walls/new">
+                  登録方法選択へ戻る
                 </Link>
               </div>
             </div>
@@ -1525,7 +1429,6 @@ export function NewWallRegistrationForm({
               </div>
             ) : null}
 
-            {step === "method" ? renderMethodStep() : null}
             {step === "scan" ? renderScanStep() : null}
             {step === "upload" ? renderUploadStep() : null}
             {step === "region" ? renderRegionStep() : null}
@@ -1540,7 +1443,7 @@ export function NewWallRegistrationForm({
         cancelLabel="キャンセル"
         confirmLabel="破棄"
         confirmTone="destructive"
-        description="ここまで入力した内容は保存されません。新規壁登録を中止してカベ画面へ戻ります。"
+        description="ここまで入力した内容は保存されません。新規壁登録を中止して登録方法の選択へ戻ります。"
         onCancel={() => setIsDiscardDialogOpen(false)}
         onConfirm={handleDiscardRegistration}
         open={isDiscardDialogOpen}

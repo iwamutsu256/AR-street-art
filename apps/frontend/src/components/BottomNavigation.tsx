@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Gear, MapPin, Wall, type Icon } from "@phosphor-icons/react";
+import { Gear, MapPin, PlusCircle, type Icon } from "@phosphor-icons/react";
 import { getAppChromeSettings } from "../lib/appChrome";
 
 type BottomNavigationItem = {
@@ -20,11 +20,11 @@ const items: BottomNavigationItem[] = [
     isActive: (pathname) => pathname === "/",
   },
   {
-    href: "/walls",
-    label: "カベ",
-    Icon: Wall,
+    href: "/walls/new",
+    label: "カベを追加",
+    Icon: PlusCircle,
     isActive: (pathname) =>
-      pathname === "/walls" || pathname.startsWith("/walls/"),
+      pathname === "/walls/new" || pathname.startsWith("/walls/new/"),
   },
   {
     href: "/settings",

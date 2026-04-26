@@ -458,6 +458,7 @@ img {
   color: var(--color-foreground);
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
   transition:
     transform 140ms ease,
     border-color 140ms ease,
@@ -1838,6 +1839,19 @@ img {
   padding: 24px 0 40px;
 }
 
+.page-shell--new-wall-entry {
+  display: grid;
+  min-height: calc(100dvh - var(--header-height));
+  place-items: start center;
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.new-wall-entry {
+  width: min(720px, calc(100% - 32px));
+  padding: 24px;
+}
+
 .processing-overlay {
   position: absolute;
   inset: 0;
@@ -2349,6 +2363,20 @@ img {
   .registration-progress,
   .new-wall-registration-form {
     width: min(100% - 20px, 1120px);
+  }
+
+  .page-shell--new-wall-entry {
+    min-height: calc(
+      100dvh - var(--header-height) - var(--mobile-bottom-nav-space)
+    );
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .new-wall-entry {
+    width: min(100% - 20px, 720px);
+    padding: 20px;
+    border-radius: 20px;
   }
 
   .registration-progress {

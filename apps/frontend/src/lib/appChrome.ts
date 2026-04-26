@@ -20,12 +20,17 @@ function matchPathPrefix(prefix: string) {
     pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
+function matchPathDescendant(prefix: string) {
+  return (pathname: string) => pathname.startsWith(`${prefix}/`);
+}
+
 const appChromeRules: AppChromeRule[] = [
   {
-    matches: matchPathPrefix("/walls/new"),
+    matches: matchPathDescendant("/walls/new"),
     settings: {
       showBottomNavigation: false,
       showGlobalHeader: false,
+      showNearbyWallBanner: false,
     },
   },
   {
