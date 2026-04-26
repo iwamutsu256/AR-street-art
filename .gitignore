@@ -11,6 +11,7 @@ coverage/
 tmp/
 temp/
 *.tsbuildinfo
+apps/frontend/certificates/
 
 .env
 .env.*

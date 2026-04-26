@@ -10,32 +10,7 @@ type CanvasPageProps = {
 };
 
 function getCanvasWsBase() {
-  const explicitBase = (process.env.NEXT_PUBLIC_WS_BASE ?? '/ws').replace(/\/$/, '');
-
-  if (/^wss?:\/\//.test(explicitBase)) {
-    return explicitBase;
-  }
-
-  const appOrigin = new URL(process.env.APP_ORIGIN ?? 'http://localhost:3000');
-  const apiPort = process.env.API_PORT?.trim();
-  const apiProxyTarget = process.env.API_PROXY_TARGET?.replace(/\/$/, '');
-
-  if (apiProxyTarget) {
-    const proxyUrl = new URL(apiProxyTarget);
-    const isLocalBrowserReachableHost =
-      proxyUrl.hostname === 'localhost' ||
-      proxyUrl.hostname === '127.0.0.1' ||
-      proxyUrl.hostname === appOrigin.hostname;
-
-    if (isLocalBrowserReachableHost) {
-      const wsOrigin = apiProxyTarget.replace(/^http/, 'ws');
-      return `${wsOrigin}${explicitBase}`;
-    }
-  }
-
-  const protocol = appOrigin.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = apiPort ? `${appOrigin.hostname}:${apiPort}` : appOrigin.host;
-  return `${protocol}//${host}${explicitBase}`;
+  return (process.env.NEXT_PUBLIC_WS_BASE ?? '/ws').trim().replace(/\/$/, '') || '/ws';
 }
 
 export async function generateMetadata({ params }: CanvasPageProps): Promise<Metadata> {

@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.11.0",
   "scripts": {
     "dev:frontend": "pnpm --filter @street-art/frontend dev",
+    "dev:frontend:https": "pnpm --filter @street-art/frontend dev:https",
     "dev:api": "pnpm --filter @street-art/api dev",
     "dev:admin": "pnpm --filter @street-art/admin dev",
     "dev": "pnpm -r --parallel --filter @street-art/frontend --filter @street-art/api dev",

@@ -29,13 +29,14 @@ services:
       dockerfile: apps/frontend/Dockerfile
       target: dev
     working_dir: /workspace
-    command: sh -lc "flock /workspace/.pnpm-install.lock pnpm install --no-frozen-lockfile && pnpm --filter @street-art/frontend dev:docker"
+    command: sh -lc "flock /workspace/.pnpm-install.lock pnpm install --no-frozen-lockfile && HTTPS_FLAG=$$(printf '%s' \"$$FRONTEND_DEV_HTTPS\" | tr -d '\r') && if [ \"$$HTTPS_FLAG\" = \"1\" ]; then pnpm --filter @street-art/frontend dev:docker:https; else pnpm --filter @street-art/frontend dev:docker; fi"
     env_file:
       - .env
     environment:
       API_PROXY_TARGET: http://api:3001
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
+      FRONTEND_DEV_BIND_HOST: 0.0.0.0
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
       npm_config_store_dir: /pnpm/store
