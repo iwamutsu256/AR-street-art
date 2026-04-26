@@ -1,43 +1,233 @@
-import { sql } from '../lib/db.js';
+import { fileURLToPath } from "node:url";
+import { Buffer } from "node:buffer";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { count, sql as drizzleSql } from "drizzle-orm";
+import {
+  DEFAULT_PALETTE_COLORS,
+  DEFAULT_PALETTE_NAME,
+  DEFAULT_PALETTE_VERSION,
+} from "@street-art/shared";
+import { env } from "../lib/env.js";
+import { db, sql } from "../lib/db.js";
+import { canvases, palettes, walls } from "./schema.js";
+
+const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
+
+type CornerCoordinate = { x: number; y: number };
+
+function unsplashImage(
+  photoId: string,
+  options: { width: number; height?: number; fit?: "crop" | "max" },
+) {
+  const url = new URL(`https://images.unsplash.com/${photoId}`);
+  url.searchParams.set("auto", "format");
+  url.searchParams.set("fm", "jpg");
+  url.searchParams.set("q", "80");
+  url.searchParams.set("fit", options.fit ?? "crop");
+  url.searchParams.set("w", String(options.width));
+
+  if (options.height) {
+    url.searchParams.set("h", String(options.height));
+  }
+
+  return url.toString();
+}
+
+function corners(points: CornerCoordinate[]) {
+  return points;
+}
+
+const wallSeeds = [
+  {
+    id: "demo-wall-1",
+    name: "Tokyo Station Demo Wall",
+    displayAddress: "東京都千代田区丸の内1丁目",
+    latitude: 35.6809591,
+    longitude: 139.7673068,
+    originalImageUrl: unsplashImage("photo-1529429617124-aee711a5ac1c", {
+      width: 1600,
+      height: 1200,
+    }),
+    thumbnailImageUrl: unsplashImage("photo-1529429617124-aee711a5ac1c", {
+      width: 800,
+      height: 800,
+    }),
+    rectifiedImageUrl: unsplashImage("photo-1529429617124-aee711a5ac1c", {
+      width: 1200,
+      height: 800,
+    }),
+    cornerCoordinates: corners([
+      { x: 220, y: 180 },
+      { x: 1370, y: 165 },
+      { x: 1415, y: 980 },
+      { x: 200, y: 1030 },
+    ]),
+    approxHeading: 180,
+    visibilityRadiusM: 40,
+  },
+  {
+    id: "demo-wall-2",
+    name: "Kanda Demo Shutter",
+    displayAddress: "東京都千代田区神田鍛冶町3丁目",
+    latitude: 35.695,
+    longitude: 139.77,
+    originalImageUrl: unsplashImage("photo-1513694203232-719a280e022f", {
+      width: 1600,
+      height: 1200,
+    }),
+    thumbnailImageUrl: unsplashImage("photo-1513694203232-719a280e022f", {
+      width: 800,
+      height: 800,
+    }),
+    rectifiedImageUrl: unsplashImage("photo-1513694203232-719a280e022f", {
+      width: 1080,
+      height: 1080,
+    }),
+    cornerCoordinates: corners([
+      { x: 290, y: 190 },
+      { x: 1290, y: 245 },
+      { x: 1265, y: 1125 },
+      { x: 255, y: 1090 },
+    ]),
+    approxHeading: 90,
+    visibilityRadiusM: 40,
+  },
+] satisfies (typeof walls.$inferInsert)[];
+
+const paletteSeeds = [
+  {
+    version: DEFAULT_PALETTE_VERSION,
+    name: DEFAULT_PALETTE_NAME,
+    colors: DEFAULT_PALETTE_COLORS,
+  },
+] satisfies (typeof palettes.$inferInsert)[];
+
+function createBlankPixelData(width: number, height: number) {
+  return Buffer.alloc(width * height, 0);
+}
+
+const canvasSeeds = [
+  {
+    id: "demo-canvas-1",
+    wallId: "demo-wall-1",
+    width: 192,
+    height: 128,
+    paletteVersion: DEFAULT_PALETTE_VERSION,
+    pixelData: createBlankPixelData(192, 128),
+  },
+  {
+    id: "demo-canvas-2",
+    wallId: "demo-wall-2",
+    width: 160,
+    height: 160,
+    paletteVersion: DEFAULT_PALETTE_VERSION,
+    pixelData: createBlankPixelData(160, 160),
+  },
+] satisfies (typeof canvases.$inferInsert)[];
+
+function formatDatabaseTarget(databaseUrl: string) {
+  const { hostname, port, pathname } = new URL(databaseUrl);
+  const databaseName = pathname.replace(/^\//, "");
+  return `${hostname}${port ? `:${port}` : ""}/${databaseName}`;
+}
 
 async function main() {
-  await sql`CREATE EXTENSION IF NOT EXISTS postgis`;
+  console.log(`Seeding database: ${formatDatabaseTarget(env.databaseUrl)}`);
+  await migrate(db, { migrationsFolder });
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS walls (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      latitude DOUBLE PRECISION NOT NULL,
-      longitude DOUBLE PRECISION NOT NULL,
-      photo_url TEXT,
-      approx_heading INTEGER,
-      visibility_radius_m INTEGER NOT NULL DEFAULT 30,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+  const [wallsBeforeResult] = await db.select({ count: count() }).from(walls);
+  const wallsBeforeCount = Number(wallsBeforeResult.count);
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS canvases (
-      id TEXT PRIMARY KEY,
-      wall_id TEXT NOT NULL REFERENCES walls(id) ON DELETE CASCADE,
-      width INTEGER NOT NULL,
-      height INTEGER NOT NULL,
-      palette_version TEXT NOT NULL DEFAULT 'v1',
-      pixel_data BYTEA,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+  const [palettesBeforeResult] = await db.select({ count: count() }).from(palettes);
+  const palettesBeforeCount = Number(palettesBeforeResult.count);
 
-  await sql`
-    INSERT INTO walls (id, name, latitude, longitude, photo_url, approx_heading, visibility_radius_m)
-    VALUES
-      ('demo-wall-1', 'Tokyo Station Demo Wall', 35.6809591, 139.7673068, 'https://images.unsplash.com/photo-1529429617124-aee711a5ac1c?auto=format&fit=crop&w=800&q=80', 180, 40),
-      ('demo-wall-2', 'Kanda Demo Shutter', 35.6950, 139.7700, 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=800&q=80', 90, 40)
-    ON CONFLICT (id) DO NOTHING
-  `;
+  const [canvasesBeforeResult] = await db.select({ count: count() }).from(canvases);
+  const canvasesBeforeCount = Number(canvasesBeforeResult.count);
 
-  console.log('Seed completed.');
+  const insertedPalettes = await db
+    .insert(palettes)
+    .values(paletteSeeds)
+    .onConflictDoNothing({ target: palettes.version })
+    .returning({ version: palettes.version, name: palettes.name });
+
+  const wallsWithGeom = wallSeeds.map((seed) => ({
+    ...seed,
+    geom: drizzleSql`ST_SetSRID(ST_MakePoint(${seed.longitude}, ${seed.latitude}), 4326)::geography`,
+  }));
+
+  const insertedWalls = await db
+    .insert(walls)
+    .values(wallsWithGeom)
+    .onConflictDoNothing({ target: walls.id })
+    .returning({ id: walls.id, name: walls.name });
+
+  const insertedCanvases = await db
+    .insert(canvases)
+    .values(canvasSeeds)
+    .onConflictDoNothing({ target: canvases.id })
+    .returning({ id: canvases.id, wallId: canvases.wallId });
+
+  const [wallsAfterResult] = await db.select({ count: count() }).from(walls);
+  const wallsAfterCount = Number(wallsAfterResult.count);
+
+  const [palettesAfterResult] = await db.select({ count: count() }).from(palettes);
+  const palettesAfterCount = Number(palettesAfterResult.count);
+
+  const [canvasesAfterResult] = await db.select({ count: count() }).from(canvases);
+  const canvasesAfterCount = Number(canvasesAfterResult.count);
+
+  const skippedPaletteCount = paletteSeeds.length - insertedPalettes.length;
+  const skippedWallCount = wallSeeds.length - insertedWalls.length;
+  const skippedCanvasCount = canvasSeeds.length - insertedCanvases.length;
+
+  console.log(`Palettes before seed: ${palettesBeforeCount}`);
+  console.log(`Inserted palettes: ${insertedPalettes.length}`);
+
+  if (insertedPalettes.length > 0) {
+    console.log(
+      `Inserted palette versions: ${insertedPalettes
+        .map((palette) => `${palette.version} (${palette.name})`)
+        .join(", ")}`,
+    );
+  }
+
+  if (skippedPaletteCount > 0) {
+    console.log(`Skipped existing palettes: ${skippedPaletteCount}`);
+  }
+
+  console.log(`Palettes after seed: ${palettesAfterCount}`);
+  console.log(`Walls before seed: ${wallsBeforeCount}`);
+  console.log(`Inserted walls: ${insertedWalls.length}`);
+
+  if (insertedWalls.length > 0) {
+    console.log(
+      `Inserted IDs: ${insertedWalls.map((wall) => `${wall.id} (${wall.name})`).join(", ")}`,
+    );
+  }
+
+  if (skippedWallCount > 0) {
+    console.log(`Skipped existing walls: ${skippedWallCount}`);
+  }
+
+  console.log(`Walls after seed: ${wallsAfterCount}`);
+  console.log(`Canvases before seed: ${canvasesBeforeCount}`);
+  console.log(`Inserted canvases: ${insertedCanvases.length}`);
+
+  if (insertedCanvases.length > 0) {
+    console.log(
+      `Inserted canvas IDs: ${insertedCanvases
+        .map((canvas) => `${canvas.id} (${canvas.wallId})`)
+        .join(", ")}`,
+    );
+  }
+
+  if (skippedCanvasCount > 0) {
+    console.log(`Skipped existing canvases: ${skippedCanvasCount}`);
+  }
+
+  console.log(`Canvases after seed: ${canvasesAfterCount}`);
+
+  console.log("Seed completed.");
 }
 
 main()

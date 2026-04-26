@@ -1,0 +1,1 @@
+ALTER TABLE "walls" ADD COLUMN "display_address" text;

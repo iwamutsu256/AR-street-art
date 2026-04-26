@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next';
 
+const apiProxyTarget = (process.env.API_PROXY_TARGET ?? 'http://localhost:3001').replace(/\/$/, '');
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   transpilePackages: ['@street-art/shared'],
@@ -7,7 +9,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://api:3001/:path*',
+        destination: `${apiProxyTarget}/:path*`,
       },
     ];
   },

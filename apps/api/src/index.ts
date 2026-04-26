@@ -1,68 +1,57 @@
-import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import type { WallSummary } from '@street-art/shared';
-import { env } from './lib/env.js';
-import { sql } from './lib/db.js';
-import { redis } from './lib/redis.js';
+import type { Server } from "node:http";
+import { serve } from "@hono/node-server";
+import { createApp } from "./app.js";
+import {
+  flushDirtyCanvases,
+  startCanvasFlushInterval,
+} from "./canvas/service.js";
+import { env } from "./lib/env.js";
+import { redis } from "./lib/redis.js";
+import { createCanvasWebSocketServer } from "./ws/canvas.js";
 
-const app = new Hono();
+const app = createApp();
+const canvasFlushInterval = startCanvasFlushInterval();
 
-app.use('*', cors({ origin: env.appOrigin, credentials: true }));
+const server = serve(
+  {
+    fetch: app.fetch,
+    port: env.apiPort,
+  },
+  (info) => {
+    console.log(`API server listening on http://localhost:${info.port}`);
+  },
+);
 
-app.get('/', (c) => c.json({ ok: true, service: 'api' }));
+createCanvasWebSocketServer(server as Server);
 
-app.get('/health', async (c) => {
-  let dbOk = false;
-  let redisOk = false;
+let isShuttingDown = false;
 
-  try {
-    await sql`select 1`;
-    dbOk = true;
-  } catch {
-    dbOk = false;
+async function shutdown() {
+  if (isShuttingDown) {
+    return;
   }
 
+  isShuttingDown = true;
+  clearInterval(canvasFlushInterval);
+  await flushDirtyCanvases();
+
   try {
-    if (redis.status === 'wait') {
-      await redis.connect();
+    if (
+      redis.status === "ready" ||
+      redis.status === "connect" ||
+      redis.status === "wait"
+    ) {
+      await redis.quit();
     }
-    await redis.ping();
-    redisOk = true;
   } catch {
-    redisOk = false;
+    redis.disconnect();
   }
+}
 
-  const ok = dbOk && redisOk;
-  return c.json({ ok, db: dbOk, redis: redisOk }, ok ? 200 : 503);
+process.once("SIGINT", () => {
+  void shutdown().finally(() => process.exit(0));
 });
 
-app.get('/walls', async (c) => {
-  const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude, photo_url AS "photoUrl"
-    FROM walls
-    ORDER BY created_at ASC
-  `;
-  return c.json(rows);
-});
-
-app.get('/walls/:id', async (c) => {
-  const id = c.req.param('id');
-  const rows = await sql<WallSummary[]>`
-    SELECT id, name, latitude, longitude, photo_url AS "photoUrl"
-    FROM walls
-    WHERE id = ${id}
-    LIMIT 1
-  `;
-
-  if (rows.length === 0) {
-    return c.json({ message: 'Wall not found' }, 404);
-  }
-
-  return c.json(rows[0]);
-});
-
-serve({
-  fetch: app.fetch,
-  port: env.apiPort,
+process.once("SIGTERM", () => {
+  void shutdown().finally(() => process.exit(0));
 });

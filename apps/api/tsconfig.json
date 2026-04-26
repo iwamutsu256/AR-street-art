@@ -9,11 +9,13 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@street-art/shared": ["../../packages/shared/src/index.ts"]
-    }
+    "types": ["node", "ws"]
   },
-  "include": ["src/**/*.ts", "../../packages/shared/src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
