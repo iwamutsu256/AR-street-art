@@ -288,15 +288,15 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
         }}
       />
 
-      <div style={{ position: 'fixed', inset: 0, background: 'var(--color-ar-backdrop)', zIndex: 10 }}>
+      <div style={{ position: 'fixed', inset: 0, background: 'var(--color-bg-inverse)', zIndex: 10 }}>
         <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       </div>
 
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 30 }}>
         {phase === 'loading' && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <div style={{ color: 'var(--color-foreground-on-dark)', textAlign: 'center', display: 'grid', gap: 12 }}>
-              <div className="ar-spinner" style={{ borderColor: 'color-mix(in srgb, var(--color-foreground-on-dark) 30%, transparent)', borderTopColor: 'var(--color-foreground-on-dark)', margin: '0 auto' }} />
+            <div style={{ color: 'var(--color-fg-inverse)', textAlign: 'center', display: 'grid', gap: 12 }}>
+              <div className="ar-spinner" style={{ borderColor: 'rgba(255, 248, 244, 0.3)', borderTopColor: 'var(--color-fg-inverse)', margin: '0 auto' }} />
               <p style={{ margin: 0, fontSize: 14 }}>AR 機能を読み込み中...</p>
             </div>
           </div>
@@ -304,10 +304,10 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
         {phase === 'compiling' && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <div style={{ color: 'var(--color-foreground-on-dark)', textAlign: 'center', display: 'grid', gap: 12 }}>
-              <div className="ar-spinner" style={{ borderColor: 'color-mix(in srgb, var(--color-scan) 30%, transparent)', borderTopColor: 'var(--color-scan)', margin: '0 auto' }} />
+            <div style={{ color: 'var(--color-fg-inverse)', textAlign: 'center', display: 'grid', gap: 12 }}>
+              <div className="ar-spinner" style={{ borderColor: 'rgba(22, 101, 52, 0.3)', borderTopColor: 'var(--color-success)', margin: '0 auto' }} />
               <p style={{ margin: 0, fontSize: 14 }}>壁のマーカーを生成中...</p>
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--color-foreground-on-dark-subtle)' }}>初回は 10〜20 秒かかります</p>
+              <p style={{ margin: 0, fontSize: 12, color: 'rgba(255, 248, 244, 0.62)' }}>初回は 10〜20 秒かかります</p>
             </div>
           </div>
         )}
@@ -317,8 +317,8 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
         {phase === 'error' && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', pointerEvents: 'auto' }}>
             <div style={{
-              background: 'var(--color-ar-panel)',
-              color: 'var(--color-foreground-on-dark)',
+              background: 'rgba(20, 17, 14, 0.82)',
+              color: 'var(--color-fg-inverse)',
               padding: '24px',
               borderRadius: 18,
               textAlign: 'center',
@@ -326,11 +326,11 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
               display: 'grid',
               gap: 10,
             }}>
-              <p style={{ margin: 0, color: 'var(--color-danger-on-dark)', fontWeight: 600 }}>エラーが発生しました</p>
-              <p style={{ margin: 0, fontSize: 13, color: 'var(--color-foreground-on-dark-muted)' }}>{errorMsg}</p>
+              <p style={{ margin: 0, color: 'var(--color-danger)', fontWeight: 600 }}>エラーが発生しました</p>
+              <p style={{ margin: 0, fontSize: 13, color: 'rgba(255, 248, 244, 0.82)' }}>{errorMsg}</p>
               <button
                 onClick={() => { startedRef.current = false; startAR(); }}
-                style={{ marginTop: 8, padding: '10px 20px', background: 'var(--color-scan)', color: 'var(--color-foreground-on-dark)', border: 'none', borderRadius: 10, fontSize: 14, cursor: 'pointer' }}
+                style={{ marginTop: 8, padding: '10px 20px', background: 'var(--color-success)', color: 'var(--color-fg-inverse)', border: 'none', borderRadius: 10, fontSize: 14, cursor: 'pointer' }}
               >
                 再試行
               </button>

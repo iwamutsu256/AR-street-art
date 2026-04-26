@@ -925,7 +925,7 @@ export function NewWallRegistrationForm({
   const renderProgress = () => (
     <div className="overflow-hidden h-1" aria-label="登録の進捗" role="group">
       <div
-        className="h-1 transition-all duration-200 bg-background-strong"
+        className="h-1 transition-all duration-200 bg-bg-muted"
         aria-hidden="true"
       >
         <div
@@ -958,7 +958,7 @@ export function NewWallRegistrationForm({
         ) : null}
         <label
           htmlFor="dropzone-file"
-          className="flex flex-col items-center justify-center w-full h-64 border border-dashed rounded-lg cursor-pointer hover:bg-surface"
+          className="flex flex-col items-center justify-center w-full h-64 border border-dashed rounded-lg cursor-pointer hover:bg-bg-elevated"
         >
           <div className="flex flex-col items-center justify-center pt-5 pb-6">
             <UploadSimpleIcon size={40} />

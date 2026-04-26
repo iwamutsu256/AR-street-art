@@ -571,7 +571,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img alt={selectedWallName} src={detailImageUrl} />
                 ) : (
-                  <div className="bg-surface-soft">No Image</div>
+                  <div className="bg-bg-muted">No Image</div>
                 )}
               </div>
               <div className="flex flex-col justify-between">
