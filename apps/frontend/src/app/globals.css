@@ -38,6 +38,7 @@
   --color-danger-bg: rgb(180 35 24 / 10%);
 
   --color-focus: rgb(182 76 45 / 22%);
+  --color-selected: #0f5bff;
   --color-overlay: rgb(255 250 241 / 86%);
 
   --shadow-elevated: 0 20px 60px rgb(65 38 13 / 10%);
@@ -74,11 +75,7 @@ body {
       rgba(237, 212, 173, 0.72),
       transparent 30%
     ),
-    linear-gradient(
-      180deg,
-      var(--color-bg-elevated) 0%,
-      var(--color-bg) 100%
-    );
+    linear-gradient(180deg, var(--color-bg-elevated) 0%, var(--color-bg) 100%);
 }
 
 .site-header {
@@ -204,22 +201,6 @@ body {
   padding: 0 14px;
 }
 
-a {
-  color: inherit;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-img {
-  display: block;
-  max-width: 100%;
-}
-
 .sr-only {
   position: absolute;
   overflow: hidden;
@@ -270,11 +251,7 @@ img {
       rgba(255, 207, 123, 0.44),
       transparent 26%
     ),
-    linear-gradient(
-      135deg,
-      var(--color-bg-muted),
-      rgba(255, 245, 228, 0.94)
-    );
+    linear-gradient(135deg, var(--color-bg-muted), rgba(255, 245, 228, 0.94));
   box-shadow: var(--shadow-elevated);
 }
 
@@ -595,11 +572,7 @@ img {
       rgba(255, 227, 178, 0.42),
       transparent 30%
     ),
-    linear-gradient(
-      135deg,
-      var(--color-bg-elevated),
-      rgba(239, 229, 212, 0.96)
-    );
+    linear-gradient(135deg, var(--color-bg-elevated), rgba(239, 229, 212, 0.96));
 }
 
 .placeholder-map__content {

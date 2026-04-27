@@ -1,11 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Info,
-  Palette,
-} from "@phosphor-icons/react";
+import { ArrowLeft, Info, PaletteIcon } from "@phosphor-icons/react";
 import {
   useCallback,
   useEffect,
@@ -35,6 +31,19 @@ type ConnectionState = "connecting" | "open" | "closed" | "error";
 type PopoverKind = "palette" | "info" | null;
 type PixelPoint = { x: number; y: number };
 type PointerPosition = { x: number; y: number };
+type SurfaceFrame = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+type ViewportFrame = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  enabled: boolean;
+};
 type PinchGesture = {
   contentLeft: number;
   contentTop: number;
@@ -49,6 +58,33 @@ type PinchGesture = {
 const MOBILE_LAYOUT_MAX = 720;
 const MOBILE_LAYOUT_QUERY = "(max-width: 720px)";
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
+const MOBILE_CURSOR_ICON_SIZE = 30;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 24;
+
+function MobileCursorPencilIcon({ size }: { size: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="block"
+      fill="none"
+      focusable="false"
+      height={size}
+      viewBox="0 0 30 30"
+      width={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <polygon fill="#d5a46a" points="0 30 6.1 23.9 9.2 27 3.1 30" />
+      <polygon fill="#1f1a14" points="0 30 3.2 26.8 4.8 28.4 2.4 30" />
+      <polygon
+        fill="currentColor"
+        points="6.1 23.9 20.2 9.8 24.4 14 10.3 28.1"
+      />
+      <polygon fill="#f2e7d8" points="20.2 9.8 23.4 6.6 27.6 10.8 24.4 14" />
+      <polygon fill="#e58d8a" points="23.4 6.6 27 3 30 6 26.4 9.6" />
+    </svg>
+  );
+}
 
 function getInitialZoom(width: number, height: number) {
   const longestEdge = Math.max(width, height);
@@ -64,6 +100,36 @@ function getInitialCursorPixel(width: number, height: number): PixelPoint {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function arePointerPositionsEqual(
+  first: PointerPosition | null,
+  second: PointerPosition | null,
+) {
+  if (!first || !second) {
+    return first === second;
+  }
+
+  return first.x === second.x && first.y === second.y;
+}
+
+function areSurfaceFramesEqual(first: SurfaceFrame, second: SurfaceFrame) {
+  return (
+    first.left === second.left &&
+    first.top === second.top &&
+    first.width === second.width &&
+    first.height === second.height
+  );
+}
+
+function areViewportFramesEqual(first: ViewportFrame, second: ViewportFrame) {
+  return (
+    first.left === second.left &&
+    first.top === second.top &&
+    first.width === second.width &&
+    first.height === second.height &&
+    first.enabled === second.enabled
+  );
 }
 
 function parsePaletteColors(palette: string[]) {
@@ -96,7 +162,7 @@ function getHexColorForPixelValue(pixelValue: number, palette: string[]) {
     normalizePixelValue(pixelValue, palette.length),
   );
 
-  return paletteIndex === null ? null : palette[paletteIndex] ?? null;
+  return paletteIndex === null ? null : (palette[paletteIndex] ?? null);
 }
 
 function drawSnapshotToCanvas(
@@ -182,8 +248,11 @@ function shouldUseMobileCanvasLayout() {
 
   const narrowViewport =
     window.matchMedia(MOBILE_LAYOUT_QUERY).matches ||
-    (window.visualViewport?.width ?? window.innerWidth) <= MOBILE_LAYOUT_MAX;
-  const shortestScreenEdge = Math.min(window.screen.width, window.screen.height);
+    window.innerWidth <= MOBILE_LAYOUT_MAX;
+  const shortestScreenEdge = Math.min(
+    window.screen.width,
+    window.screen.height,
+  );
   const narrowScreen =
     Number.isFinite(shortestScreenEdge) &&
     shortestScreenEdge > 0 &&
@@ -214,7 +283,10 @@ export function CanvasEditor({
   const redrawQueuedRef = useRef(false);
   const socketRef = useRef<WebSocket | null>(null);
   const pixelsRef = useRef(
-    decodeSnapshotPixels(initialSnapshot.pixels, initialSnapshot.palette.length),
+    decodeSnapshotPixels(
+      initialSnapshot.pixels,
+      initialSnapshot.palette.length,
+    ),
   );
   const paletteRef = useRef(initialSnapshot.palette);
   const parsedPaletteRef = useRef(parsePaletteColors(initialSnapshot.palette));
@@ -237,6 +309,7 @@ export function CanvasEditor({
     x: cursorPixelRef.current.x,
     y: cursorPixelRef.current.y,
   });
+  const mobileCursorViewportRef = useRef<PointerPosition | null>(null);
   const activePointersRef = useRef<Map<number, PointerPosition>>(new Map());
   const singleTouchRef = useRef<{
     pointerId: number;
@@ -261,14 +334,14 @@ export function CanvasEditor({
   const [spacePressed, setSpacePressed] = useState(false);
   const [statusMessage, setStatusMessage] =
     useState("キャンバスに接続しています。");
-  const [viewportFrame, setViewportFrame] = useState({
+  const [viewportFrame, setViewportFrame] = useState<ViewportFrame>({
     left: 0,
     top: 0,
     width: 100,
     height: 100,
     enabled: false,
   });
-  const [surfaceFrame, setSurfaceFrame] = useState(() => {
+  const [surfaceFrame, setSurfaceFrame] = useState<SurfaceFrame>(() => {
     const initialZoom = getInitialZoom(
       initialSnapshot.width,
       initialSnapshot.height,
@@ -284,26 +357,39 @@ export function CanvasEditor({
   const [cursorPixel, setCursorPixel] = useState<PixelPoint>(
     cursorPixelRef.current,
   );
+  const [mobileCursorViewport, setMobileCursorViewport] =
+    useState<PointerPosition | null>(null);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [openPopover, setOpenPopover] = useState<PopoverKind>(null);
   const [paintButtonPressed, setPaintButtonPressed] = useState(false);
   const [isTouchNavigating, setIsTouchNavigating] = useState(false);
 
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
+  function commitZoomState(nextZoom: number) {
+    if (zoomRef.current === nextZoom) {
+      return;
+    }
 
-  useEffect(() => {
-    panRef.current = pan;
-  }, [pan]);
+    zoomRef.current = nextZoom;
+    setZoom(nextZoom);
+  }
 
-  useEffect(() => {
-    cursorPixelRef.current = cursorPixel;
-  }, [cursorPixel]);
+  function commitPanState(nextPan: PointerPosition) {
+    if (panRef.current.x === nextPan.x && panRef.current.y === nextPan.y) {
+      return;
+    }
 
-  useEffect(() => {
-    paintButtonPressedRef.current = paintButtonPressed;
-  }, [paintButtonPressed]);
+    panRef.current = nextPan;
+    setPan(nextPan);
+  }
+
+  function setPaintButtonPressedState(nextPressed: boolean) {
+    if (paintButtonPressedRef.current === nextPressed) {
+      return;
+    }
+
+    paintButtonPressedRef.current = nextPressed;
+    setPaintButtonPressed(nextPressed);
+  }
 
   useEffect(() => {
     setSelectedColor((current) => {
@@ -326,8 +412,10 @@ export function CanvasEditor({
 
       if (!nextIsMobile) {
         setOpenPopover(null);
-        setPaintButtonPressed(false);
+        setPaintButtonPressedState(false);
         activePointersRef.current.clear();
+        mobileCursorViewportRef.current = null;
+        setMobileCursorViewport(null);
         singleTouchRef.current = null;
         pinchGestureRef.current = null;
         setIsTouchNavigating(false);
@@ -337,12 +425,10 @@ export function CanvasEditor({
     syncLayout();
     window.addEventListener("resize", syncLayout);
     window.addEventListener("orientationchange", syncLayout);
-    window.visualViewport?.addEventListener("resize", syncLayout);
 
     return () => {
       window.removeEventListener("resize", syncLayout);
       window.removeEventListener("orientationchange", syncLayout);
-      window.visualViewport?.removeEventListener("resize", syncLayout);
     };
   }, []);
 
@@ -369,7 +455,10 @@ export function CanvasEditor({
     dirtyPixelsRef.current = [];
 
     for (const pixel of pixelsToDraw) {
-      const colorString = getHexColorForPixelValue(pixel.color, paletteRef.current);
+      const colorString = getHexColorForPixelValue(
+        pixel.color,
+        paletteRef.current,
+      );
 
       if (!colorString) {
         mainContext?.clearRect(pixel.x, pixel.y, 1, 1);
@@ -504,25 +593,36 @@ export function CanvasEditor({
         return proposedPan;
       }
 
-      setSurfaceFrame({
+      const nextSurfaceFrame = {
         left: metrics.relativeLeft,
         top: metrics.relativeTop,
         width: metrics.surfaceWidth,
         height: metrics.surfaceHeight,
-      });
-
-      setViewportFrame({
+      };
+      const nextViewportFrame = {
         left: (metrics.visibleLeft / initialSnapshot.width) * 100,
         top: (metrics.visibleTop / initialSnapshot.height) * 100,
         width:
-          ((metrics.visibleRight - metrics.visibleLeft) / initialSnapshot.width) *
+          ((metrics.visibleRight - metrics.visibleLeft) /
+            initialSnapshot.width) *
           100,
         height:
           ((metrics.visibleBottom - metrics.visibleTop) /
             initialSnapshot.height) *
           100,
         enabled: metrics.navigatorEnabled,
-      });
+      };
+
+      setSurfaceFrame((current) =>
+        areSurfaceFramesEqual(current, nextSurfaceFrame)
+          ? current
+          : nextSurfaceFrame,
+      );
+      setViewportFrame((current) =>
+        areViewportFramesEqual(current, nextViewportFrame)
+          ? current
+          : nextViewportFrame,
+      );
 
       return metrics.clampedPan;
     },
@@ -537,8 +637,7 @@ export function CanvasEditor({
     };
     const clampedPan = updateViewportFrameForState(nextZoom, nextPan);
 
-    setPan(clampedPan);
-    panRef.current = clampedPan;
+    commitPanState(clampedPan);
   }
 
   function setCursorToPixel(
@@ -579,21 +678,104 @@ export function CanvasEditor({
     return clampedPixel;
   }
 
-  function moveCursorByScreenDelta(deltaX: number, deltaY: number) {
+  function getMobileCursorViewportBounds(
+    nextZoom = zoomRef.current,
+    proposedPan = panRef.current,
+  ) {
+    const viewport = getViewportMetrics(nextZoom, proposedPan);
+
+    if (!viewport) {
+      return null;
+    }
+
+    return {
+      viewport,
+      left: clamp(viewport.relativeLeft, 0, viewport.stageWidth),
+      top: clamp(viewport.relativeTop, 0, viewport.stageHeight),
+      right: clamp(
+        viewport.relativeLeft + viewport.surfaceWidth,
+        0,
+        viewport.stageWidth,
+      ),
+      bottom: clamp(
+        viewport.relativeTop + viewport.surfaceHeight,
+        0,
+        viewport.stageHeight,
+      ),
+    };
+  }
+
+  function syncCursorFromMobileViewportPosition(
+    nextViewportPosition = mobileCursorViewportRef.current,
+    shouldPaint = false,
+    nextZoom = zoomRef.current,
+    proposedPan = panRef.current,
+  ) {
+    const bounds = getMobileCursorViewportBounds(nextZoom, proposedPan);
+
+    if (!bounds) {
+      return null;
+    }
+
+    const fallbackPosition = nextViewportPosition ??
+      mobileCursorViewportRef.current ?? {
+        x:
+          bounds.viewport.relativeLeft +
+          (cursorFloatRef.current.x + 0.5) * nextZoom,
+        y:
+          bounds.viewport.relativeTop +
+          (cursorFloatRef.current.y + 0.5) * nextZoom,
+      };
+    const clampedViewportPosition = {
+      x: clamp(fallbackPosition.x, bounds.left, bounds.right),
+      y: clamp(fallbackPosition.y, bounds.top, bounds.bottom),
+    };
     const nextFloat = {
-      x: cursorFloatRef.current.x + deltaX / zoomRef.current,
-      y: cursorFloatRef.current.y + deltaY / zoomRef.current,
-    };
-    const clampedFloat = {
-      x: clamp(nextFloat.x, 0, initialSnapshot.width - 1),
-      y: clamp(nextFloat.y, 0, initialSnapshot.height - 1),
-    };
-    const nextPixel = {
-      x: Math.round(clampedFloat.x),
-      y: Math.round(clampedFloat.y),
+      x: clamp(
+        (clampedViewportPosition.x - bounds.viewport.relativeLeft) / nextZoom,
+        0,
+        initialSnapshot.width - 1,
+      ),
+      y: clamp(
+        (clampedViewportPosition.y - bounds.viewport.relativeTop) / nextZoom,
+        0,
+        initialSnapshot.height - 1,
+      ),
     };
 
-    setCursorToPixel(nextPixel, paintButtonPressedRef.current, clampedFloat);
+    mobileCursorViewportRef.current = clampedViewportPosition;
+    setMobileCursorViewport((current) =>
+      arePointerPositionsEqual(current, clampedViewportPosition)
+        ? current
+        : clampedViewportPosition,
+    );
+    setCursorToPixel(
+      {
+        x: Math.floor(nextFloat.x),
+        y: Math.floor(nextFloat.y),
+      },
+      shouldPaint,
+      nextFloat,
+    );
+
+    return clampedViewportPosition;
+  }
+
+  function moveMobileCursorByScreenDelta(deltaX: number, deltaY: number) {
+    const currentViewportPosition =
+      mobileCursorViewportRef.current ?? syncCursorFromMobileViewportPosition();
+
+    if (!currentViewportPosition) {
+      return;
+    }
+
+    syncCursorFromMobileViewportPosition(
+      {
+        x: currentViewportPosition.x + deltaX,
+        y: currentViewportPosition.y + deltaY,
+      },
+      paintButtonPressedRef.current,
+    );
   }
 
   function paintCurrentCursor() {
@@ -678,8 +860,8 @@ export function CanvasEditor({
     const scale = getDistance(first, second) / gesture.startDistance;
     const nextZoom = clamp(
       Number((gesture.startZoom * scale).toFixed(2)),
-      1,
-      24,
+      MIN_ZOOM,
+      MAX_ZOOM,
     );
     const nextSurfaceWidth = initialSnapshot.width * nextZoom;
     const nextSurfaceHeight = initialSnapshot.height * nextZoom;
@@ -697,10 +879,9 @@ export function CanvasEditor({
     };
     const nextPan = updateViewportFrameForState(nextZoom, proposedPan);
 
-    setZoom(nextZoom);
-    setPan(nextPan);
-    zoomRef.current = nextZoom;
-    panRef.current = nextPan;
+    commitZoomState(nextZoom);
+    commitPanState(nextPan);
+    syncCursorFromMobileViewportPosition(undefined, false, nextZoom, nextPan);
   }
 
   const handleOutsidePointerDown = useEffectEvent((event: PointerEvent) => {
@@ -784,8 +965,8 @@ export function CanvasEditor({
       const currentZoom = zoomRef.current;
       const nextZoom = clamp(
         Number((currentZoom + (event.deltaY > 0 ? -0.5 : 0.5)).toFixed(2)),
-        1,
-        24,
+        MIN_ZOOM,
+        MAX_ZOOM,
       );
 
       if (nextZoom === currentZoom) {
@@ -816,24 +997,22 @@ export function CanvasEditor({
       };
       const nextPan = updateViewportFrameForState(nextZoom, proposedPan);
 
-      setZoom(nextZoom);
-      setPan(nextPan);
-      zoomRef.current = nextZoom;
-      panRef.current = nextPan;
+      commitZoomState(nextZoom);
+      commitPanState(nextPan);
+    };
+
+    const syncStageLayout = () => {
+      const nextPan = updateViewportFrameForState();
+
+      if (nextPan.x !== panRef.current.x || nextPan.y !== panRef.current.y) {
+        commitPanState(nextPan);
+      }
     };
 
     stage.addEventListener("wheel", handleWheel, { passive: false });
+    syncStageLayout();
 
-    const resizeObserver = new ResizeObserver(() => {
-      const nextPan = updateViewportFrameForState();
-
-      if (nextPan.x === panRef.current.x && nextPan.y === panRef.current.y) {
-        return;
-      }
-
-      setPan(nextPan);
-      panRef.current = nextPan;
-    });
+    const resizeObserver = new ResizeObserver(syncStageLayout);
     resizeObserver.observe(stage);
 
     return () => {
@@ -890,7 +1069,10 @@ export function CanvasEditor({
 
       if (message.type === "pixel:applied") {
         const { x, y } = message;
-        const color = normalizePixelValue(message.color, paletteRef.current.length);
+        const color = normalizePixelValue(
+          message.color,
+          paletteRef.current.length,
+        );
         const index = y * initialSnapshot.width + x;
 
         if (index >= 0 && index < pixelsRef.current.length) {
@@ -951,15 +1133,18 @@ export function CanvasEditor({
   ]);
 
   useEffect(() => {
-    const nextPan = updateViewportFrameForState(zoom, pan);
-
-    if (nextPan.x === pan.x && nextPan.y === pan.y) {
+    if (!isMobileLayout) {
       return;
     }
 
-    setPan(nextPan);
-    panRef.current = nextPan;
-  }, [pan, updateViewportFrameForState, zoom]);
+    syncCursorFromMobileViewportPosition();
+  }, [
+    isMobileLayout,
+    surfaceFrame.height,
+    surfaceFrame.left,
+    surfaceFrame.top,
+    surfaceFrame.width,
+  ]);
 
   function getPixelPosition(event: ReactPointerEvent<HTMLCanvasElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -978,7 +1163,10 @@ export function CanvasEditor({
 
   function applyPixelLocally(x: number, y: number, color: number) {
     const index = y * initialSnapshot.width + x;
-    const normalizedColor = normalizePixelValue(color, paletteRef.current.length);
+    const normalizedColor = normalizePixelValue(
+      color,
+      paletteRef.current.length,
+    );
 
     if (pixelsRef.current[index] === normalizedColor) {
       return;
@@ -1029,7 +1217,9 @@ export function CanvasEditor({
     setIsPanning(true);
   }
 
-  function handleDesktopPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleDesktopPointerDown(
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
 
@@ -1049,7 +1239,9 @@ export function CanvasEditor({
     paintStroke(position, position);
   }
 
-  function handleDesktopPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleDesktopPointerMove(
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) {
     const position = getPixelPosition(event);
     setCursorToPixel(position);
 
@@ -1059,8 +1251,7 @@ export function CanvasEditor({
         y: panStartRef.current.panY + (event.clientY - panStartRef.current.y),
       };
       const clampedPan = updateViewportFrameForState(zoomRef.current, nextPan);
-      setPan(clampedPan);
-      panRef.current = clampedPan;
+      commitPanState(clampedPan);
       return;
     }
 
@@ -1073,7 +1264,9 @@ export function CanvasEditor({
     lastPointerPixelRef.current = position;
   }
 
-  function handleMobilePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleMobilePointerDown(
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     activePointersRef.current.set(event.pointerId, {
@@ -1083,7 +1276,9 @@ export function CanvasEditor({
     syncMobileGestureState();
   }
 
-  function handleMobilePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleMobilePointerMove(
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) {
     if (!activePointersRef.current.has(event.pointerId)) {
       return;
     }
@@ -1098,7 +1293,10 @@ export function CanvasEditor({
       return;
     }
 
-    if (!singleTouchRef.current || singleTouchRef.current.pointerId !== event.pointerId) {
+    if (
+      !singleTouchRef.current ||
+      singleTouchRef.current.pointerId !== event.pointerId
+    ) {
       singleTouchRef.current = {
         pointerId: event.pointerId,
         x: event.clientX,
@@ -1107,7 +1305,7 @@ export function CanvasEditor({
       return;
     }
 
-    moveCursorByScreenDelta(
+    moveMobileCursorByScreenDelta(
       event.clientX - singleTouchRef.current.x,
       event.clientY - singleTouchRef.current.y,
     );
@@ -1188,7 +1386,7 @@ export function CanvasEditor({
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     ignoreNextPaintClickRef.current = true;
-    setPaintButtonPressed(true);
+    setPaintButtonPressedState(true);
     paintCurrentCursor();
   }
 
@@ -1199,7 +1397,7 @@ export function CanvasEditor({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
-    setPaintButtonPressed(false);
+    setPaintButtonPressedState(false);
   }
 
   const connectionLabel = {
@@ -1217,42 +1415,54 @@ export function CanvasEditor({
   const selectedColorLabel =
     selectedColor === TRANSPARENT_PIXEL_VALUE
       ? "透明"
-      : selectedColorHex ?? `色 ${selectedColor}`;
+      : (selectedColorHex ?? `色 ${selectedColor}`);
   const stageIsPannable = isPanning || spacePressed || isTouchNavigating;
+  const gridPatternId = `canvas-grid-${initialSnapshot.canvasId}`;
+  const mobileCursorBadgePosition = isMobileLayout
+    ? mobileCursorViewport
+    : null;
 
-  function renderPaletteContent() {
+  function renderPaletteContent(compact = false) {
+    const paletteGridClassName = compact
+      ? "grid grid-cols-6 gap-1.5 select-none"
+      : "grid grid-cols-4 select-none";
+    const selectedSwatchShadow =
+      "inset 0 0 0 2px var(--color-selected), inset 0 0 0 4px #fff";
+    const swatchClassName = compact
+      ? "relative aspect-square w-full cursor-pointer select-none border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)]"
+      : "relative min-h-12 cursor-pointer select-none border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)] hover:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:outline-none";
+
     return (
       <>
-        <div className="stack-sm">
-          <div className="step-badge">Palette</div>
-          <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
-            {palette.length} colors + transparent
-          </h2>
-          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2.5 border border-border bg-bg-elevated px-3 py-2 text-fg-muted">
-            <span>選択中</span>
-            <strong>{selectedColorLabel}</strong>
-            <i
-              className={`size-7 overflow-hidden border border-[rgba(31,26,20,0.14)] bg-bg-elevated${selectedColor === TRANSPARENT_PIXEL_VALUE ? " transparent-swatch" : ""}`}
-              style={selectedColorHex ? { backgroundColor: selectedColorHex } : undefined}
-            />
-          </div>
-        </div>
+        <h2 className="section-title text-lg select-none">パレット</h2>
 
-        <div className="grid grid-cols-4 border border-border bg-white/80">
+        <div className={paletteGridClassName}>
           {palette.map((color, index) => (
             <button
               key={`${index}-${color}`}
               aria-label={`color ${index + 1}`}
-              className={`relative min-h-12 cursor-pointer border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)] transition hover:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:outline-none${selectedColor === index + 1 ? " shadow-[inset_0_0_0_2px_var(--color-primary-active)]" : ""}`}
+              className={swatchClassName}
               onClick={() => setSelectedColor(index + 1)}
-              style={{ backgroundColor: color }}
+              style={{
+                backgroundColor: color,
+                boxShadow:
+                  selectedColor === index + 1
+                    ? selectedSwatchShadow
+                    : undefined,
+              }}
               type="button"
             />
           ))}
           <button
             aria-label="transparent"
-            className={`transparent-swatch relative min-h-12 cursor-pointer border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)] transition hover:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:outline-none${selectedColor === TRANSPARENT_PIXEL_VALUE ? " shadow-[inset_0_0_0_2px_var(--color-primary-active)]" : ""}`}
+            className={`transparent-swatch ${swatchClassName}`}
             onClick={() => setSelectedColor(TRANSPARENT_PIXEL_VALUE)}
+            style={{
+              boxShadow:
+                selectedColor === TRANSPARENT_PIXEL_VALUE
+                  ? selectedSwatchShadow
+                  : undefined,
+            }}
             type="button"
           />
         </div>
@@ -1263,218 +1473,247 @@ export function CanvasEditor({
   function renderInfoContent() {
     return (
       <>
-        <div className="stack-sm">
-          <div className="step-badge">Info</div>
-          <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
-            キャンバス情報
-          </h2>
-        </div>
+        <h2 className="section-title text-lg select-none">キャンバス情報</h2>
 
-        <div className="grid gap-2.5">
-          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
+        <div className="grid gap-2.5 select-none">
+          <div className="flex items-center justify-between gap-3 select-none border border-border bg-bg-elevated px-3 py-2">
             <span>接続状態</span>
             <strong className={`tag tag--${connectionState}`}>
               {connectionLabel[connectionState]}
             </strong>
           </div>
-          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
+          <div className="flex items-center justify-between gap-3 select-none border border-border bg-bg-elevated px-3 py-2">
             <span>サイズ</span>
             <strong>
               {initialSnapshot.width} x {initialSnapshot.height}px
             </strong>
           </div>
-          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
-            <span>パレット</span>
-            <strong>
-              {initialSnapshot.paletteVersion} / {palette.length}色 + 透明
-            </strong>
-          </div>
-          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
-            <span>カーソル</span>
-            <strong>
-              {cursorPixel.x}, {cursorPixel.y}
-            </strong>
-          </div>
-          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
-            <span>ズーム</span>
-            <strong>{Math.round(zoom * 100)}%</strong>
-          </div>
         </div>
 
-        <p className="section-copy">{statusMessage}</p>
+        <p className="section-copy select-none">{statusMessage}</p>
       </>
     );
   }
 
   function renderStage() {
     return (
-      <div className="min-h-0 min-w-0 border border-border bg-bg-elevated p-3.5 shadow-[var(--shadow-elevated)]">
+      <div
+        className={`relative h-full min-h-0 select-none overflow-hidden bg-gray-400 ${stageIsPannable ? " cursor-grab" : " cursor-crosshair"}`}
+        ref={stageRef}
+      >
         <div
-          className={`relative h-full min-h-0 overflow-hidden border border-[rgba(31,26,20,0.08)]${stageIsPannable ? " cursor-grab" : " cursor-crosshair"}`}
+          className="absolute block select-none overflow-hidden bg-[#fff8f0] shadow-[0_28px_60px_rgba(50,33,15,0.16)]"
           style={{
-            background:
-              "radial-gradient(circle at top left, rgba(255, 211, 144, 0.24), transparent 34%), repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.6) 0, rgba(255, 255, 255, 0.6) 1px, transparent 1px, transparent 28px), repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.6) 0, rgba(255, 255, 255, 0.6) 1px, transparent 1px, transparent 28px), linear-gradient(135deg, rgba(255, 252, 245, 0.96), rgba(240, 229, 209, 0.94))",
+            left: surfaceFrame.left,
+            top: surfaceFrame.top,
+            width: surfaceFrame.width,
+            height: surfaceFrame.height,
           }}
-          ref={stageRef}
         >
           <div
-            className="absolute block overflow-hidden bg-[#fff8f0] shadow-[0_28px_60px_rgba(50,33,15,0.16)]"
+            className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat opacity-[0.18] pointer-events-none"
+            style={referenceBackgroundStyle}
+          />
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 z-2 pointer-events-none"
+          >
+            <svg
+              className="block h-full w-full"
+              preserveAspectRatio="none"
+              shapeRendering="crispEdges"
+              viewBox={`0 0 ${initialSnapshot.width} ${initialSnapshot.height}`}
+              style={{
+                opacity: zoom >= 6 ? 0.72 : zoom >= 3 ? 0.42 : 0.22,
+              }}
+            >
+              <defs>
+                <pattern
+                  height="1"
+                  id={gridPatternId}
+                  patternUnits="userSpaceOnUse"
+                  width="1"
+                >
+                  <path
+                    d="M 1 0 L 0 0 0 1"
+                    fill="none"
+                    shapeRendering="crispEdges"
+                    stroke="rgba(31, 26, 20, 0.16)"
+                    strokeWidth={1}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </pattern>
+              </defs>
+              <rect
+                fill={`url(#${gridPatternId})`}
+                height={initialSnapshot.height}
+                width={initialSnapshot.width}
+              />
+            </svg>
+          </div>
+          <canvas
+            className={
+              stageIsPannable
+                ? "relative z-1 block select-none touch-none [image-rendering:pixelated] cursor-grab"
+                : "relative z-1 block select-none touch-none [image-rendering:pixelated] cursor-crosshair"
+            }
+            height={initialSnapshot.height}
+            onContextMenu={(event) => event.preventDefault()}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            ref={canvasRef}
             style={{
-              left: surfaceFrame.left,
-              top: surfaceFrame.top,
               width: surfaceFrame.width,
               height: surfaceFrame.height,
             }}
-          >
-            <div
-              className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat opacity-[0.18] pointer-events-none"
-              style={referenceBackgroundStyle}
-            />
-            <div
-              className="absolute inset-0 z-[2] pointer-events-none"
-              style={{
-                backgroundSize: `${zoom}px ${zoom}px`,
-                backgroundImage:
-                  "linear-gradient(to right, rgba(31, 26, 20, 0.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(31, 26, 20, 0.16) 1px, transparent 1px)",
-                opacity: zoom >= 6 ? 0.72 : zoom >= 3 ? 0.42 : 0.22,
-              }}
-            />
-            <canvas
-              className={stageIsPannable ? "relative z-[1] block touch-none [image-rendering:pixelated] cursor-grab" : "relative z-[1] block touch-none [image-rendering:pixelated] cursor-crosshair"}
-              height={initialSnapshot.height}
-              onContextMenu={(event) => event.preventDefault()}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              ref={canvasRef}
-              style={{
-                width: surfaceFrame.width,
-                height: surfaceFrame.height,
-              }}
-              width={initialSnapshot.width}
-            />
-            <div
-              className="pointer-events-none absolute left-0 top-0 z-[3] border border-[rgba(182,76,45,0.94)] bg-[rgba(182,76,45,0.18)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
-              style={{
-                width: zoom,
-                height: zoom,
-                transform: `translate(${cursorPixel.x * zoom}px, ${cursorPixel.y * zoom}px)`,
-              }}
-            />
-          </div>
+            width={initialSnapshot.width}
+          />
+          <div
+            className="pointer-events-none absolute left-0 top-0 z-[3] border border-[rgba(182,76,45,0.94)] bg-[rgba(182,76,45,0.18)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
+            style={{
+              width: zoom,
+              height: zoom,
+              transform: `translate(${cursorPixel.x * zoom}px, ${cursorPixel.y * zoom}px)`,
+            }}
+          />
         </div>
+        {mobileCursorBadgePosition ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute z-4 select-none text-primary leading-0 drop-shadow-[0_6px_12px_rgba(65,38,13,0.18)]"
+            style={{
+              left: mobileCursorBadgePosition.x,
+              top: mobileCursorBadgePosition.y,
+              transform: `translateY(-${MOBILE_CURSOR_ICON_SIZE}px)`,
+            }}
+          >
+            <MobileCursorPencilIcon size={MOBILE_CURSOR_ICON_SIZE} />
+          </div>
+        ) : null}
       </div>
     );
   }
 
   return (
     <section
-      className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]${isMobileLayout ? " gap-3" : " gap-[18px]"}`}
+      className={`h-full${isMobileLayout ? " overflow-y-auto select-none" : ""}`}
       ref={editorRef}
     >
       <AppHeader
         leading={
           <Link
             aria-label="マップへ戻る"
-            className="site-header__control site-header__control--icon"
+            className="site-header__control site-header__control--icon select-none"
             href={leaveHref}
           >
             <ArrowLeft size={20} weight="bold" />
           </Link>
         }
         title={
-          <div className="site-header__title">
+          <div className="site-header__title select-none">
             {wallName ?? "ライブキャンバス"}
           </div>
         }
       />
 
       {isMobileLayout ? (
-        <div className="grid min-h-0 content-start gap-3 overflow-y-auto px-4 pb-4">
-          <div className="grid min-h-0 w-full aspect-square self-start">
+        <div className="grid min-h-0 select-none content-start gap-3 pb-4">
+          <div className="grid min-h-0 w-full select-none aspect-square self-start">
             {renderStage()}
           </div>
 
-          <div className="relative grid grid-cols-2 gap-3" ref={toolbarRef}>
-            <div className="relative">
-              <button
-                aria-expanded={openPopover === "palette"}
-                aria-haspopup="dialog"
-                className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 border border-border bg-bg-elevated px-3.5 text-fg shadow-[var(--shadow-elevated)]"
-                onClick={() => togglePopover("palette")}
-                type="button"
-              >
-                <span
-                  className={`size-[18px] border border-[rgba(31,26,20,0.14)] bg-bg-elevated${selectedColor === TRANSPARENT_PIXEL_VALUE ? " transparent-swatch" : ""}`}
-                  style={selectedColorHex ? { backgroundColor: selectedColorHex } : undefined}
-                />
-                <Palette size={18} weight="bold" />
-                <span>Color</span>
-              </button>
-
-              {openPopover === "palette" ? (
-                <div
-                  className="absolute bottom-full left-0 z-24 mb-3 w-[min(320px,calc(100vw-24px))]"
-                  role="dialog"
-                >
-                  <div className="relative grid gap-4 border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
-                    {renderPaletteContent()}
-                    <div className="absolute -bottom-2 left-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="relative">
-              <button
-                aria-expanded={openPopover === "info"}
-                aria-haspopup="dialog"
-                className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 border border-border bg-bg-elevated px-3.5 text-fg shadow-[var(--shadow-elevated)]"
-                onClick={() => togglePopover("info")}
-                type="button"
-              >
-                <Info size={18} weight="bold" />
-                <span>Info</span>
-              </button>
-
-              {openPopover === "info" ? (
-                <div
-                  className="absolute right-0 bottom-full z-24 mb-3 w-[min(320px,calc(100vw-24px))]"
-                  role="dialog"
-                >
-                  <div className="relative grid gap-4 border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
-                    {renderInfoContent()}
-                    <div className="absolute -bottom-2 right-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div style={{ paddingBottom: "max(0px, env(safe-area-inset-bottom))" }}>
-            <button
-              className={`min-h-[58px] w-full border border-[rgba(111,45,26,0.16)] text-[1.05rem] font-black tracking-[0.08em] text-[#fff8f2] shadow-[0_18px_32px_rgba(143,56,31,0.24)] transition${paintButtonPressed ? " translate-y-px shadow-[0_10px_18px_rgba(143,56,31,0.22)]" : ""}`}
-              onClick={() => {
-                if (ignoreNextPaintClickRef.current) {
-                  ignoreNextPaintClickRef.current = false;
-                  return;
-                }
-
-                paintCurrentCursor();
-              }}
-              onLostPointerCapture={() => setPaintButtonPressed(false)}
-              onPointerCancel={handlePaintButtonPointerUp}
-              onPointerDown={handlePaintButtonPointerDown}
-              onPointerUp={handlePaintButtonPointerUp}
-              style={{
-                background:
-                  "linear-gradient(180deg, rgba(218, 111, 64, 0.98), rgba(176, 72, 41, 0.98))",
-              }}
-              type="button"
+          <div className="select-none px-2">
+            <div
+              className="relative grid grid-cols-2 gap-3 select-none"
+              ref={toolbarRef}
             >
-              PAINT
-            </button>
+              <div className="relative select-none">
+                <button
+                  aria-expanded={openPopover === "palette"}
+                  aria-haspopup="dialog"
+                  className="select-none inline-flex min-h-13 w-full items-center justify-center gap-2 border border-border bg-bg-elevated px-3.5 text-fg shadow-[var(--shadow-elevated)]"
+                  onClick={() => togglePopover("palette")}
+                  type="button"
+                >
+                  <span
+                    className={`size-4 border border-[rgba(31,26,20,0.14)] bg-bg-elevated${selectedColor === TRANSPARENT_PIXEL_VALUE ? " transparent-swatch" : ""}`}
+                    style={
+                      selectedColorHex
+                        ? { backgroundColor: selectedColorHex }
+                        : undefined
+                    }
+                  />
+                  <PaletteIcon size={18} weight="bold" />
+                  <span>パレット</span>
+                </button>
+
+                {openPopover === "palette" ? (
+                  <div
+                    className="absolute bottom-full left-0 z-[30] mb-3 w-[min(320px,calc(100vw-24px))] select-none"
+                    role="dialog"
+                  >
+                    <div className="relative grid gap-4 select-none border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
+                      {renderPaletteContent(true)}
+                      <div className="absolute -bottom-2 left-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="relative select-none">
+                <button
+                  aria-expanded={openPopover === "info"}
+                  aria-haspopup="dialog"
+                  className="select-none inline-flex min-h-13 w-full items-center justify-center gap-2 border border-border bg-bg-elevated px-3.5 text-fg shadow-[var(--shadow-elevated)]"
+                  onClick={() => togglePopover("info")}
+                  type="button"
+                >
+                  <Info size={18} weight="bold" />
+                  <span>詳細</span>
+                </button>
+
+                {openPopover === "info" ? (
+                  <div
+                    className="absolute right-0 bottom-full z-[30] mb-3 w-[min(320px,calc(100vw-24px))] select-none"
+                    role="dialog"
+                  >
+                    <div className="relative grid gap-4 select-none border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
+                      {renderInfoContent()}
+                      <div className="absolute -bottom-2 right-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div
+              className="select-none"
+              style={{
+                paddingBottom:
+                  "calc(8px + max(0px, env(safe-area-inset-bottom)))",
+              }}
+            >
+              <button
+                className={`mt-4 py-5 w-full text-xl font-bold bg-primary tracking-wide rounded-lg border-2 border-primary-active select-none text-fg-inverse ${paintButtonPressed ? " translate-y-2" : "shadow-[0_8px_0_0_var(--color-primary-active)]"}`}
+                onClick={() => {
+                  if (ignoreNextPaintClickRef.current) {
+                    ignoreNextPaintClickRef.current = false;
+                    return;
+                  }
+
+                  paintCurrentCursor();
+                }}
+                onLostPointerCapture={() => setPaintButtonPressedState(false)}
+                onPointerCancel={handlePaintButtonPointerUp}
+                onPointerDown={handlePaintButtonPointerDown}
+                onPointerUp={handlePaintButtonPointerUp}
+                type="button"
+              >
+                CLICK
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -1488,75 +1727,61 @@ export function CanvasEditor({
           {renderStage()}
 
           <aside className="grid min-h-0 gap-3.5">
-            <div className="grid min-h-0 content-start gap-4 border border-border bg-bg-elevated p-5 shadow-[var(--shadow-elevated)]">
-              <div className="stack-sm">
-                <div className="step-badge">View</div>
-                <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
-                  Navigator
-                </h2>
-              </div>
+            <div
+              className={
+                viewportFrame.enabled
+                  ? "relative overflow-hidden border border-border bg-[#fff8f0] cursor-grab"
+                  : "relative overflow-hidden border border-border bg-[#fff8f0] cursor-default"
+              }
+              onPointerDown={(event) => {
+                if (!viewportFrame.enabled) {
+                  return;
+                }
 
+                event.preventDefault();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                handleMinimapNavigate(event);
+              }}
+              onPointerMove={(event) => {
+                if (!viewportFrame.enabled || (event.buttons & 1) !== 1) {
+                  return;
+                }
+
+                handleMinimapNavigate(event);
+              }}
+              onPointerUp={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              }}
+              ref={minimapFrameRef}
+              style={{
+                aspectRatio: `${initialSnapshot.width} / ${initialSnapshot.height}`,
+                background:
+                  "linear-gradient(135deg, var(--color-bg-elevated), rgba(245, 236, 220, 0.94)), #fff8f0",
+              }}
+            >
               <div
-                className={viewportFrame.enabled ? "relative overflow-hidden border border-border bg-[#fff8f0] cursor-grab" : "relative overflow-hidden border border-border bg-[#fff8f0] cursor-default"}
-                onPointerDown={(event) => {
-                  if (!viewportFrame.enabled) {
-                    return;
-                  }
-
-                  event.preventDefault();
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  handleMinimapNavigate(event);
-                }}
-                onPointerMove={(event) => {
-                  if (!viewportFrame.enabled || (event.buttons & 1) !== 1) {
-                    return;
-                  }
-
-                  handleMinimapNavigate(event);
-                }}
-                onPointerUp={(event) => {
-                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                    event.currentTarget.releasePointerCapture(event.pointerId);
-                  }
-                }}
-                ref={minimapFrameRef}
-                style={{
-                  aspectRatio: `${initialSnapshot.width} / ${initialSnapshot.height}`,
-                  background:
-                    "linear-gradient(135deg, var(--color-bg-elevated), rgba(245, 236, 220, 0.94)), #fff8f0",
-                }}
-              >
+                className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat opacity-[0.18] pointer-events-none"
+                style={referenceBackgroundStyle}
+              />
+              <canvas
+                className="select-none relative z-1 block h-full w-full [image-rendering:pixelated]"
+                height={initialSnapshot.height}
+                ref={minimapCanvasRef}
+                width={initialSnapshot.width}
+              />
+              {viewportFrame.enabled ? (
                 <div
-                  className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat opacity-[0.18] pointer-events-none"
-                  style={referenceBackgroundStyle}
+                  className="pointer-events-none absolute z-2 min-h-3 min-w-3 border-2 border-primary-active shadow-[0_0_0_9999px_rgba(255,255,255,0.08)]"
+                  style={{
+                    left: `${viewportFrame.left}%`,
+                    top: `${viewportFrame.top}%`,
+                    width: `${viewportFrame.width}%`,
+                    height: `${viewportFrame.height}%`,
+                  }}
                 />
-                <canvas
-                  className="relative z-[1] block h-full w-full [image-rendering:pixelated]"
-                  height={initialSnapshot.height}
-                  ref={minimapCanvasRef}
-                  width={initialSnapshot.width}
-                />
-                {viewportFrame.enabled ? (
-                  <div
-                    className="pointer-events-none absolute z-[2] min-h-3 min-w-3 border-2 border-primary-active shadow-[0_0_0_9999px_rgba(255,255,255,0.08)]"
-                    style={{
-                      left: `${viewportFrame.left}%`,
-                      top: `${viewportFrame.top}%`,
-                      width: `${viewportFrame.width}%`,
-                      height: `${viewportFrame.height}%`,
-                    }}
-                  />
-                ) : null}
-              </div>
-
-              <div className="grid gap-2.5">
-                <div className="tag">{Math.round(zoom * 100)}%</div>
-                <p className="section-copy">
-                  {viewportFrame.enabled
-                    ? "ミニビューをドラッグすると表示位置を移動できます。"
-                    : "キャンバス全体が表示されています。"}
-                </p>
-              </div>
+              ) : null}
             </div>
 
             <div className="grid min-h-0 content-start gap-4 overflow-auto border border-border bg-bg-elevated p-5 shadow-[var(--shadow-elevated)]">
