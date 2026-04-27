@@ -1,15 +1,15 @@
-import { randomUUID } from 'node:crypto';
-import { CANVAS_MAX_SIZE, DEFAULT_PALETTE_VERSION } from '@street-art/shared';
-import { asc, eq, sql } from 'drizzle-orm';
-import { Hono } from 'hono';
-import { z, type ZodIssue } from 'zod';
-import { createBlankPixelData } from '../canvas/service.js';
-import { canvases, walls } from '../db/schema.js';
-import { db } from '../lib/db.js';
-import { uploadWallImagesToR2 } from '../lib/s3.js';
+import { randomUUID } from "node:crypto";
+import { CANVAS_MAX_SIZE, DEFAULT_PALETTE_VERSION } from "@street-art/shared";
+import { asc, eq, sql } from "drizzle-orm";
+import { Hono } from "hono";
+import { z, type ZodIssue } from "zod";
+import { createBlankPixelData } from "../canvas/service.js";
+import { canvases, walls } from "../db/schema.js";
+import { db } from "../lib/db.js";
+import { uploadWallImagesToR2 } from "../lib/s3.js";
 
 function parseCornerCoordinates(value: unknown) {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return JSON.parse(value);
   }
 
@@ -17,26 +17,31 @@ function parseCornerCoordinates(value: unknown) {
 }
 
 const createWallSchema = z.object({
-  name: z.string().min(1, 'name is required'),
+  name: z.string().min(1, "name is required"),
   latitude: z.preprocess(
     (val) => Number(val),
-    z.number().min(-90).max(90, 'latitude must be between -90 and 90')
+    z.number().min(-90).max(90, "latitude must be between -90 and 90"),
   ),
   longitude: z.preprocess(
     (val) => Number(val),
-    z.number().min(-180).max(180, 'longitude must be between -180 and 180')
+    z.number().min(-180).max(180, "longitude must be between -180 and 180"),
   ),
   approxHeading: z.preprocess(
     (val) => (val ? Number(val) : undefined),
-    z.number().int().min(0).max(359).optional()
+    z.number().int().min(0).max(359).optional(),
   ),
   visibilityRadiusM: z.preprocess(
     (val) => (val ? Number(val) : undefined),
-    z.number().int().positive('visibilityRadiusM must be a positive integer').optional().default(30)
+    z
+      .number()
+      .int()
+      .positive("visibilityRadiusM must be a positive integer")
+      .optional()
+      .default(30),
   ),
   cornerCoordinates: z.preprocess(
     (val) => {
-      if (typeof val === 'string') {
+      if (typeof val === "string") {
         try {
           return JSON.parse(val);
         } catch {
@@ -50,23 +55,51 @@ const createWallSchema = z.object({
         z.object({
           x: z.preprocess((val) => Number(val), z.number()),
           y: z.preprocess((val) => Number(val), z.number()),
-        })
+        }),
       )
-      .length(4, 'cornerCoordinates must be an array of 4 points')
+      .length(4, "cornerCoordinates must be an array of 4 points"),
   ),
   canvasWidth: z.preprocess(
     (val) => Number(val),
-    z.number().int().positive().max(CANVAS_MAX_SIZE, `canvasWidth must be <= ${CANVAS_MAX_SIZE}`)
+    z
+      .number()
+      .int()
+      .positive()
+      .max(CANVAS_MAX_SIZE, `canvasWidth must be <= ${CANVAS_MAX_SIZE}`),
   ),
   canvasHeight: z.preprocess(
     (val) => Number(val),
-    z.number().int().positive().max(CANVAS_MAX_SIZE, `canvasHeight must be <= ${CANVAS_MAX_SIZE}`)
+    z
+      .number()
+      .int()
+      .positive()
+      .max(CANVAS_MAX_SIZE, `canvasHeight must be <= ${CANVAS_MAX_SIZE}`),
   ),
-  displayAddress: z.string().optional().nullable(),
+  displayAddress: z.preprocess((val) => {
+    if (val === undefined) {
+      return undefined;
+    }
+
+    if (val === null) {
+      return null;
+    }
+
+    if (typeof val !== "string") {
+      return val;
+    }
+
+    const trimmed = val.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, z.string().optional().nullable()),
 });
 
 function isUploadedFile(input: unknown): input is File {
-  return typeof input === 'object' && input !== null && 'arrayBuffer' in input && 'type' in input;
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    "arrayBuffer" in input &&
+    "type" in input
+  );
 }
 
 export const wallsApp = new Hono();
@@ -77,19 +110,30 @@ export const wallsApp = new Hono();
 const nearestWallQuerySchema = z.object({
   lat: z.preprocess(
     (val) => Number(val),
-    z.number().min(-90, 'latitude must be >= -90').max(90, 'latitude must be <= 90')
+    z
+      .number()
+      .min(-90, "latitude must be >= -90")
+      .max(90, "latitude must be <= 90"),
   ),
   lon: z.preprocess(
     (val) => Number(val),
-    z.number().min(-180, 'longitude must be >= -180').max(180, 'longitude must be <= 180')
+    z
+      .number()
+      .min(-180, "longitude must be >= -180")
+      .max(180, "longitude must be <= 180"),
   ),
   radius: z.preprocess(
     (val) => (val ? Number(val) : undefined),
-    z.number().int().positive('radius must be a positive integer').optional().default(100)
+    z
+      .number()
+      .int()
+      .positive("radius must be a positive integer")
+      .optional()
+      .default(100),
   ),
 });
 
-wallsApp.get('/nearest', async (c) => {
+wallsApp.get("/nearest", async (c) => {
   const query = c.req.query();
   const parsed = nearestWallQuerySchema.safeParse(query);
 
@@ -101,7 +145,10 @@ wallsApp.get('/nearest', async (c) => {
 
   try {
     // PostGISの関数をDrizzleの`sql`ヘルパーと組み合わせて使用します。
-    const distanceInMeters = sql<number>`ST_Distance(geom, ST_MakePoint(${lon}, ${lat})::geography)`.as('distance');
+    const distanceInMeters =
+      sql<number>`ST_Distance(geom, ST_MakePoint(${lon}, ${lat})::geography)`.as(
+        "distance",
+      );
 
     const result = await db
       .select({
@@ -115,7 +162,9 @@ wallsApp.get('/nearest', async (c) => {
       })
       .from(walls)
       // ST_DWithinを使用して、空間インデックスを活用した効率的な絞り込みを行います。
-      .where(sql`ST_DWithin(geom, ST_MakePoint(${lon}, ${lat})::geography, ${radius})`)
+      .where(
+        sql`ST_DWithin(geom, ST_MakePoint(${lon}, ${lat})::geography, ${radius})`,
+      )
       .orderBy(asc(distanceInMeters))
       .limit(1);
 
@@ -126,18 +175,37 @@ wallsApp.get('/nearest', async (c) => {
     }
 
     // `photoUrl`を追加して、レスポンスの形式を他のエンドポイントと統一します。
-    const { id, name, latitude, longitude, thumbnailImageUrl, displayAddress, distance } = nearestWall;
-    return c.json({ id, name, latitude, longitude, photoUrl: thumbnailImageUrl, displayAddress, distance });
+    const {
+      id,
+      name,
+      latitude,
+      longitude,
+      thumbnailImageUrl,
+      displayAddress,
+      distance,
+    } = nearestWall;
+    return c.json({
+      id,
+      name,
+      latitude,
+      longitude,
+      photoUrl: thumbnailImageUrl,
+      displayAddress,
+      distance,
+    });
   } catch (error) {
-    console.error('Failed to find nearest wall:', error);
-    return c.json({ message: 'データベースエラーにより、最も近い壁の検索に失敗しました。' }, 500);
+    console.error("Failed to find nearest wall:", error);
+    return c.json(
+      { message: "データベースエラーにより、最も近い壁の検索に失敗しました。" },
+      500,
+    );
   }
 });
 
 /**
  * 壁一覧を返す
  */
-wallsApp.get('/', async (c) => {
+wallsApp.get("/", async (c) => {
   // `select()`で全カラムを取得すると、`jsonb`型の`cornerCoordinates`の処理で問題が発生する可能性があるため、
   // レスポンスに必要なカラムのみを明示的に指定して取得します。
   const allWalls = await db
@@ -167,8 +235,8 @@ wallsApp.get('/', async (c) => {
 /**
  * 指定された壁を返す
  */
-wallsApp.get('/:id', async (c) => {
-  const id = c.req.param('id');
+wallsApp.get("/:id", async (c) => {
+  const id = c.req.param("id");
   const [[row] = [], [canvasRow] = []] = await Promise.all([
     db
       .select({
@@ -202,7 +270,7 @@ wallsApp.get('/:id', async (c) => {
   ]);
 
   if (!row) {
-    return c.json({ message: 'Wall not found' }, 404);
+    return c.json({ message: "Wall not found" }, 404);
   }
 
   const responseData = {
@@ -227,7 +295,7 @@ wallsApp.get('/:id', async (c) => {
 /**
  * 壁を登録する
  */
-wallsApp.post('/', async (c) => {
+wallsApp.post("/", async (c) => {
   const body = await c.req.parseBody();
   const allErrors: ZodIssue[] = [];
 
@@ -238,7 +306,11 @@ wallsApp.post('/', async (c) => {
   }
 
   // 2. 画像ファイルを個別に検証し、エラーを収集
-  const imageFields = ['originalImageFile', 'thumbnailImageFile', 'rectifiedImageFile'];
+  const imageFields = [
+    "originalImageFile",
+    "thumbnailImageFile",
+    "rectifiedImageFile",
+  ];
   for (const fieldName of imageFields) {
     const file = body[fieldName];
 
@@ -248,7 +320,7 @@ wallsApp.post('/', async (c) => {
         path: [fieldName],
         message: `A non-empty image file is required for ${fieldName}.`,
       });
-    } else if (!file.type.startsWith('image/')) {
+    } else if (!file.type.startsWith("image/")) {
       allErrors.push({
         code: z.ZodIssueCode.custom,
         path: [fieldName],
@@ -274,9 +346,9 @@ wallsApp.post('/', async (c) => {
     canvasHeight,
     displayAddress,
   } = parsed.data!;
-  const originalImageFile = body['originalImageFile'] as File;
-  const thumbnailImageFile = body['thumbnailImageFile'] as File;
-  const rectifiedImageFile = body['rectifiedImageFile'] as File;
+  const originalImageFile = body["originalImageFile"] as File;
+  const thumbnailImageFile = body["thumbnailImageFile"] as File;
+  const rectifiedImageFile = body["rectifiedImageFile"] as File;
 
   try {
     const newWallId = randomUUID();
@@ -286,7 +358,7 @@ wallsApp.post('/', async (c) => {
       newWallId,
       originalImageFile,
       thumbnailImageFile,
-      rectifiedImageFile
+      rectifiedImageFile,
     );
 
     const created = await db.transaction(async (tx) => {
@@ -333,24 +405,23 @@ wallsApp.post('/', async (c) => {
         ...created.newWall,
         photoUrl: created.newWall.thumbnailImageUrl,
         canvas: created.newCanvas,
-        message: 'Wall created successfully',
+        message: "Wall created successfully",
       },
-      201
+      201,
     );
   } catch (error) {
-    console.error('Failed to create wall or upload images:', error);
+    console.error("Failed to create wall or upload images:", error);
     return c.json(
-      { message: `Failed to create wall: ${error instanceof Error ? error.message : 'Unknown error'}` },
-      500
+      {
+        message: `Failed to create wall: ${error instanceof Error ? error.message : "Unknown error"}`,
+      },
+      500,
     );
   }
 });
 
-
-
-
-wallsApp.delete('/:id', async (c) => {
-  const id = c.req.param('id');
+wallsApp.delete("/:id", async (c) => {
+  const id = c.req.param("id");
 
   try {
     const [deleted] = await db
@@ -359,12 +430,12 @@ wallsApp.delete('/:id', async (c) => {
       .returning({ id: walls.id });
 
     if (!deleted) {
-      return c.json({ message: 'Wall not found' }, 404);
+      return c.json({ message: "Wall not found" }, 404);
     }
 
-    return c.json({ message: 'Wall deleted successfully' });
+    return c.json({ message: "Wall deleted successfully" });
   } catch (error) {
-    console.error('Failed to delete wall:', error);
-    return c.json({ message: 'Failed to delete wall' }, 500);
+    console.error("Failed to delete wall:", error);
+    return c.json({ message: "Failed to delete wall" }, 500);
   }
 });

@@ -49,7 +49,8 @@ export default function BottomNavigation() {
       className="fixed inset-x-0 bottom-0 z-[80] hidden border-t border-[rgba(31,26,20,0.14)] bg-[rgba(255,253,248,0.92)] shadow-[0_-12px_32px_rgba(31,26,20,0.12)] backdrop-blur-[14px] max-[720px]:block"
       style={{
         minHeight: "var(--mobile-bottom-nav-height)",
-        padding: "8px max(12px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))",
+        padding:
+          "8px max(12px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))",
       }}
     >
       <div className="mx-auto grid w-full max-w-[420px] grid-cols-3 gap-1.5">
@@ -59,7 +60,7 @@ export default function BottomNavigation() {
           return (
             <Link
               aria-current={active ? "page" : undefined}
-              className="grid min-h-14 min-w-0 place-items-center content-center gap-1 rounded-2xl text-center text-xs font-black text-fg-muted no-underline aria-[current=page]:bg-secondary/12 aria-[current=page]:text-secondary-active"
+              className="grid min-h-14 min-w-0 place-items-center content-center gap-1 rounded-2xl text-center text-xs font-black text-fg-muted no-underline aria-[current=page]:bg-primary/12 aria-[current=page]:text-primary-active"
               href={href}
               key={href}
             >

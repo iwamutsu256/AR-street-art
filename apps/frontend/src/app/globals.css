@@ -499,11 +499,10 @@ body {
   display: grid;
   gap: 8px;
   color: var(--color-fg-muted);
-  font-size: 0.95rem;
 }
 
-.field-label input,
-.field-label textarea {
+input,
+textarea {
   width: 100%;
   min-height: 48px;
   padding: 12px 14px;
@@ -512,8 +511,8 @@ body {
   color: var(--color-fg);
 }
 
-.field-label input:focus-visible,
-.field-label textarea:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--color-focus);
   border-color: var(--color-primary);
 }

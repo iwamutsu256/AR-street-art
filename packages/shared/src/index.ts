@@ -11,6 +11,7 @@ export type CanvasDimensions = {
 export type WallSummary = {
   id: string;
   name: string;
+  displayAddress: string | null;
   latitude: number;
   longitude: number;
   photoUrl?: string | null;
@@ -31,7 +32,7 @@ export type PaletteDefinition = {
 };
 
 export type CanvasSnapshot = {
-  type: 'canvas:snapshot';
+  type: "canvas:snapshot";
   canvasId: string;
   wallId: string;
   width: number;
@@ -44,7 +45,7 @@ export type CanvasSnapshot = {
 };
 
 export type PixelSetMessage = {
-  type: 'pixel:set';
+  type: "pixel:set";
   canvasId: string;
   x: number;
   y: number;
@@ -52,7 +53,7 @@ export type PixelSetMessage = {
 };
 
 export type PixelAppliedMessage = {
-  type: 'pixel:applied';
+  type: "pixel:applied";
   canvasId: string;
   x: number;
   y: number;
@@ -60,16 +61,20 @@ export type PixelAppliedMessage = {
 };
 
 export type CanvasErrorMessage = {
-  type: 'error';
+  type: "error";
   message: string;
   issues?: unknown;
 };
 
-export type CanvasRealtimeMessage = CanvasSnapshot | PixelAppliedMessage | CanvasErrorMessage;
+export type CanvasRealtimeMessage =
+  | CanvasSnapshot
+  | PixelAppliedMessage
+  | CanvasErrorMessage;
 
 export type WallDetail = {
   id: string;
   name: string;
+  displayAddress: string | null;
   latitude: number;
   longitude: number;
   originalImageUrl: string | null;
@@ -91,41 +96,41 @@ export const CANVAS_MAX_SIZE = 512;
 export const DEFAULT_CANVAS_SIZE = 128;
 export const CANVAS_COLOR_COUNT = 32;
 export const TRANSPARENT_PIXEL_VALUE = 0;
-export const DEFAULT_PALETTE_VERSION = 'v1';
-export const DEFAULT_PALETTE_NAME = 'default';
+export const DEFAULT_PALETTE_VERSION = "v1";
+export const DEFAULT_PALETTE_NAME = "default";
 export const DEFAULT_PALETTE_COLORS = [
-  '#fff8f0',
-  '#f2e8dc',
-  '#c7b8a3',
-  '#8f7e67',
-  '#4b4037',
-  '#13100d',
-  '#ffb3c1',
-  '#ff7a93',
-  '#d94a65',
-  '#8f213c',
-  '#ff9f68',
-  '#f97316',
-  '#c2410c',
-  '#7c2d12',
-  '#ffd166',
-  '#facc15',
-  '#ca8a04',
-  '#713f12',
-  '#d9f99d',
-  '#84cc16',
-  '#4d7c0f',
-  '#365314',
-  '#86efac',
-  '#22c55e',
-  '#15803d',
-  '#14532d',
-  '#7dd3fc',
-  '#38bdf8',
-  '#2563eb',
-  '#1d4ed8',
-  '#c4b5fd',
-  '#8b5cf6',
+  "#fff8f0",
+  "#f2e8dc",
+  "#c7b8a3",
+  "#8f7e67",
+  "#4b4037",
+  "#13100d",
+  "#ffb3c1",
+  "#ff7a93",
+  "#d94a65",
+  "#8f213c",
+  "#ff9f68",
+  "#f97316",
+  "#c2410c",
+  "#7c2d12",
+  "#ffd166",
+  "#facc15",
+  "#ca8a04",
+  "#713f12",
+  "#d9f99d",
+  "#84cc16",
+  "#4d7c0f",
+  "#365314",
+  "#86efac",
+  "#22c55e",
+  "#15803d",
+  "#14532d",
+  "#7dd3fc",
+  "#38bdf8",
+  "#2563eb",
+  "#1d4ed8",
+  "#c4b5fd",
+  "#8b5cf6",
 ] satisfies string[];
 
 export function normalizePixelValue(value: number, paletteLength: number) {

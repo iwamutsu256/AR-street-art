@@ -24,22 +24,23 @@ export default async function NewWallPage({ searchParams }: NewWallPageProps) {
   const normalizedReason = Array.isArray(reason) ? reason[0] : reason;
   const selectionMessage =
     normalizedReason && normalizedReason in selectionMessages
-      ? selectionMessages[
-          normalizedReason as keyof typeof selectionMessages
-        ]
+      ? selectionMessages[normalizedReason as keyof typeof selectionMessages]
       : null;
   const methodButtonClassName =
     "flex min-h-32 items-center gap-4 rounded-[22px] border border-border bg-bg-elevated p-5 text-left no-underline transition hover:-translate-y-px hover:border-border-strong hover:bg-bg-muted focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-bg-muted max-[720px]:min-h-[116px]";
 
   return (
-    <main className="page-shell grid min-h-[calc(100dvh-var(--header-height))] content-start justify-items-center py-6 max-[720px]:min-h-[calc(100dvh-var(--header-height)-var(--mobile-bottom-nav-space))] max-[720px]:py-[18px]">
+    <main className="page-shell grid min-h-[calc(100dvh-var(--header-height))] content-start justify-items-center py-6 max-180:min-h-[calc(100dvh-var(--header-height)-var(--mobile-bottom-nav-space))] max-[720px]:py-[18px]">
       <section
         aria-labelledby="new-wall-entry-title"
-        className="section-card mx-4 w-full max-w-[720px] rounded-3xl max-[720px]:mx-2.5 max-[720px]:rounded-[20px]"
+        className="p-6 mx-4 w-full max-w-180 rounded-3xl max-[720px]:mx-2.5 max-[720px]:rounded-[20px]"
       >
         <div className="section-topline">
           <div className="stack-sm">
-            <h1 className="section-title text-2xl font-bold" id="new-wall-entry-title">
+            <h1
+              className="section-title text-2xl font-bold"
+              id="new-wall-entry-title"
+            >
               カベを追加
             </h1>
             <p className="section-copy">

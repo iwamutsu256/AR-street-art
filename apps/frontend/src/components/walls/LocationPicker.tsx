@@ -131,7 +131,7 @@ export function LocationPreviewMap({
   return (
     <>
       {mapError ? <div className="error-banner">{mapError}</div> : null}
-      <div className="relative overflow-hidden rounded-[18px]">
+      <div className="relative overflow-hidden rounded-lg">
         <div
           className="h-[360px] w-full max-[720px]:h-[300px]"
           ref={containerRef}
@@ -314,13 +314,7 @@ export function LocationPicker({
   }
 
   return (
-    <div
-      className="stack-md overflow-hidden rounded-[22px] border border-border p-4"
-      style={{
-        background:
-          "linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 241, 228, 0.92))",
-      }}
-    >
+    <div className="grid gap-2">
       <div className="flex flex-wrap gap-3">
         <button
           className="button button-secondary"
@@ -328,25 +322,16 @@ export function LocationPicker({
           type="button"
           onClick={handleLocateMe}
         >
-          {isLocating ? "位置を取得中…" : "現在地へ移動"}
+          {isLocating ? "現在地を取得中…" : "現在地へ移動"}
         </button>
       </div>
       {geoError ? <div className="error-banner">{geoError}</div> : null}
       {locationNotice ? <div className="notice">{locationNotice}</div> : null}
       {mapError ? <div className="error-banner">{mapError}</div> : null}
-      <div className="relative overflow-hidden rounded-[18px]">
-        <div
-          className="h-[360px] w-full max-[720px]:h-[300px]"
-          ref={containerRef}
-        />
+      <div className="relative overflow-hidden rounded-lg">
+        <div className="h-90 w-full max-[720px]:h-75" ref={containerRef} />
         <MapCenterPin />
       </div>
-      {value ? (
-        <div className="notice mono">
-          中央座標: {formatCoordinate(value.latitude)},{" "}
-          {formatCoordinate(value.longitude)}
-        </div>
-      ) : null}
     </div>
   );
 }
