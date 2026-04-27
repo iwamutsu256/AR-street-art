@@ -182,9 +182,15 @@ export function CornerEditor({
 
   return (
     <div className="stack-md">
-      <div className="editor-stage">
+      <div
+        className="overflow-hidden rounded-[22px] border border-border"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 241, 228, 0.92))",
+        }}
+      >
         <div
-          className="editor-surface"
+          className="relative inline-block select-none leading-none [touch-action:none]"
           onLostPointerCapture={() => setDragState(null)}
           onPointerCancel={(event) => {
             if (dragState && dragState.pointerId === event.pointerId) {
@@ -214,26 +220,26 @@ export function CornerEditor({
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            className="editor-image"
+            className="block h-auto w-auto max-h-[min(72vh,720px)] max-w-[min(100%,960px)]"
             ref={imageRef}
             src={imageUrl}
             alt={imageAlt}
             onLoad={updateImageFrame}
           />
           <svg
-            className="editor-overlay"
+            className="absolute inset-0 overflow-visible"
             preserveAspectRatio="none"
             viewBox={`0 0 ${imageWidth} ${imageHeight}`}
           >
             <polygon
-              className="editor-polygon"
+              className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
               points={polygonPoints}
               style={{ strokeWidth: polygonStrokeWidth }}
             />
             {value.map((point, index) => (
               <g
                 key={CORNER_LABELS[index]}
-                className={`editor-handle${dragState?.index === index ? " is-active" : ""}`}
+                className={`cursor-grab active:cursor-grabbing${dragState?.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
                 onPointerDown={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -249,16 +255,16 @@ export function CornerEditor({
           {dragState && activePoint && scopeSize > 0 ? (
             <div
               aria-hidden="true"
-              className="editor-scope"
+              className="pointer-events-none absolute z-[2] overflow-hidden rounded-full border-2 border-primary bg-[rgba(23,19,15,0.18)] shadow-[0_14px_28px_rgba(24,19,14,0.24)] backdrop-blur-[4px]"
               style={{
                 width: scopeSize,
                 height: scopeSize,
                 ...getScopePlacementStyle(dragState.index),
               }}
             >
-              <div className="editor-scope__viewport">
+              <div className="relative h-full w-full overflow-hidden rounded-full bg-[rgba(255,248,238,0.92)]">
                 <div
-                  className="editor-scope__content"
+                  className="absolute left-0 top-0 origin-top-left will-change-transform"
                   style={{
                     width: imageFrame.width,
                     height: imageFrame.height,
@@ -266,21 +272,21 @@ export function CornerEditor({
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img alt="" className="editor-scope__image" src={imageUrl} />
+                  <img alt="" className="block h-full w-full" src={imageUrl} />
                   <svg
-                    className="editor-scope__overlay"
+                    className="absolute inset-0 overflow-visible"
                     preserveAspectRatio="none"
                     viewBox={`0 0 ${imageWidth} ${imageHeight}`}
                   >
                     <polygon
-                      className="editor-polygon"
+                      className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
                       points={polygonPoints}
                       style={{ strokeWidth: polygonStrokeWidth }}
                     />
                     {value.map((point, index) => (
                       <g
                         key={`${CORNER_LABELS[index]}-scope`}
-                        className={`editor-handle${dragState.index === index ? " is-active" : ""}`}
+                        className={`cursor-grab active:cursor-grabbing${dragState.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
                       >
                         {renderHandleCircles(point)}
                       </g>

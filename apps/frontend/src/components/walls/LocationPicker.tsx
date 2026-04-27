@@ -20,6 +20,19 @@ type LocationPreviewMapProps = {
   value: LocationValue | null;
 };
 
+function MapCenterPin() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-full justify-items-center"
+    >
+      <div className="h-[22px] w-[22px] rotate-[-45deg] rounded-[50%_50%_50%_0] border-[3px] border-white/95 bg-primary shadow-[0_8px_18px_rgba(31,26,20,0.18)]" />
+      <div className="-mt-0.5 h-[18px] w-[3px] rounded-full bg-[rgba(31,26,20,0.5)]" />
+      <div className="mt-1 h-2 w-[26px] rounded-full bg-[rgba(31,26,20,0.16)] blur-[1px]" />
+    </div>
+  );
+}
+
 const DEFAULT_CENTER: LocationValue = {
   latitude: 35.691519,
   longitude: 139.696956,
@@ -118,13 +131,12 @@ export function LocationPreviewMap({
   return (
     <>
       {mapError ? <div className="error-banner">{mapError}</div> : null}
-      <div className="map-canvas-wrap">
-        <div className="map-canvas" ref={containerRef} />
-        <div aria-hidden="true" className="map-center-pin">
-          <div className="map-center-pin__head" />
-          <div className="map-center-pin__stem" />
-          <div className="map-center-pin__shadow" />
-        </div>
+      <div className="relative overflow-hidden rounded-[18px]">
+        <div
+          className="h-[360px] w-full max-[720px]:h-[300px]"
+          ref={containerRef}
+        />
+        <MapCenterPin />
       </div>
     </>
   );
@@ -302,8 +314,14 @@ export function LocationPicker({
   }
 
   return (
-    <div className="map-shell stack-md">
-      <div className="map-toolbar">
+    <div
+      className="stack-md overflow-hidden rounded-[22px] border border-border p-4"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 241, 228, 0.92))",
+      }}
+    >
+      <div className="flex flex-wrap gap-3">
         <button
           className="button button-secondary"
           disabled={isLocating}
@@ -316,13 +334,12 @@ export function LocationPicker({
       {geoError ? <div className="error-banner">{geoError}</div> : null}
       {locationNotice ? <div className="notice">{locationNotice}</div> : null}
       {mapError ? <div className="error-banner">{mapError}</div> : null}
-      <div className="map-canvas-wrap">
-        <div className="map-canvas" ref={containerRef} />
-        <div aria-hidden="true" className="map-center-pin">
-          <div className="map-center-pin__head" />
-          <div className="map-center-pin__stem" />
-          <div className="map-center-pin__shadow" />
-        </div>
+      <div className="relative overflow-hidden rounded-[18px]">
+        <div
+          className="h-[360px] w-full max-[720px]:h-[300px]"
+          ref={containerRef}
+        />
+        <MapCenterPin />
       </div>
       {value ? (
         <div className="notice mono">

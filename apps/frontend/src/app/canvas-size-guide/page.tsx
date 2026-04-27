@@ -59,12 +59,12 @@ export default function CanvasSizeGuidePage() {
       </div>
 
       <section className="section-card">
-        <div className="guide-grid">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {canvasExamples.map((example) => (
             <article className="wall-card" key={example.size}>
-              <div className="canvas-proportion" style={{ minHeight: 200 }}>
+              <div className="grid min-h-[200px] place-items-center bg-bg-muted/45 p-6">
                 <div
-                  className="canvas-proportion__shape"
+                  className="grid w-full max-w-[220px] place-items-center rounded-2xl border border-border bg-bg-elevated px-6 py-4 text-center text-lg font-bold shadow-[var(--shadow-elevated)]"
                   style={{ aspectRatio: example.size.replace(' x ', ' / ') }}
                 >
                   {example.size}

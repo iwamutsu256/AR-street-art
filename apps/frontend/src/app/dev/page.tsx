@@ -7,14 +7,26 @@ export default async function Home() {
 
   return (
     <main className="page-shell">
-      <section className="hero">
+      <section
+        className="relative mb-6 overflow-hidden border border-border p-9 shadow-[var(--shadow-elevated)] max-[720px]:p-5"
+        style={{
+          background:
+            "radial-gradient(circle at top right, rgba(255, 207, 123, 0.44), transparent 26%), linear-gradient(135deg, var(--color-bg-muted), rgba(255, 245, 228, 0.94))",
+        }}
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-28 -right-16 h-60 w-60 rounded-full bg-primary/10 blur-[6px]"
+        />
         <div className="page-kicker">Street Art App</div>
-        <h1>街の壁を登録して、オンラインキャンバスの入口をつくる。</h1>
-        <p>
+        <h1 className="max-w-[720px] text-[clamp(2rem,5vw,4.25rem)] leading-none font-black">
+          街の壁を登録して、オンラインキャンバスの入口をつくる。
+        </h1>
+        <p className="mt-4 max-w-[720px] text-[1.05rem] leading-7 text-fg-muted">
           壁画像のアップロード、四隅指定、キャンバスサイズ決定、位置情報設定までをフロントで完結させ、
           API へまとめて送る最小の登録フローを追加しました。
         </p>
-        <div className="hero-actions">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link className="button button-primary" href="/walls/new">
             新規壁登録へ
           </Link>
@@ -31,7 +43,7 @@ export default async function Home() {
             <h2 className="section-title">Health</h2>
           </div>
         </div>
-        <div className="status-grid">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="metric-pill">
             <strong>API</strong>
             <span>{health.ok ? "OK" : "NG"}</span>
@@ -74,7 +86,7 @@ export default async function Home() {
           <div className="empty-state">壁データを取得できませんでした。</div>
         ) : (
           <ul
-            className="wall-grid"
+            className="grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3"
             style={{ listStyle: "none", padding: 0, margin: 0 }}
           >
             {walls.map((wall) => (
@@ -93,7 +105,7 @@ export default async function Home() {
                   <div className="muted-copy">
                     緯度経度: {wall.latitude}, {wall.longitude}
                   </div>
-                  <div className="inline-actions" style={{ marginTop: 16 }}>
+                  <div className="inline-actions mt-4">
                     <Link
                       className="button button-secondary"
                       href={`/walls/${wall.id}`}

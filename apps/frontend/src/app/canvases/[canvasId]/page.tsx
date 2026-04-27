@@ -34,7 +34,7 @@ export default async function CanvasPage({ params }: CanvasPageProps) {
   const wall = await getWall(snapshot.wallId);
 
   return (
-    <main className="page-shell page-shell--editor">
+    <main className="page-shell h-dvh w-full overflow-hidden px-0 py-0 md:px-3 md:py-4">
       <CanvasEditor
         initialSnapshot={snapshot}
         leaveHref={`/?focusWallId=${encodeURIComponent(snapshot.wallId)}`}

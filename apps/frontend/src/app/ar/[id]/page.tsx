@@ -9,6 +9,7 @@ import {
   type CanvasSnapshot,
   type WallDetail,
 } from '@street-art/shared';
+import { Spinner } from '../../../components/Spinner';
 
 const ARScene = dynamic(() => import('../../../components/ar/ARScene'), { ssr: false });
 
@@ -105,11 +106,11 @@ export default function WallARPage() {
 
   if (error) {
     return (
-      <div style={{ background: 'var(--color-bg-inverse)', position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, zIndex: 100 }}>
-        <p style={{ color: 'var(--color-danger)', margin: 0 }}>{error}</p>
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-bg-inverse px-6 text-center">
+        <p className="m-0 text-danger">{error}</p>
         <button
           onClick={() => router.push(`/walls/${wallId}`)}
-          style={{ padding: '10px 24px', background: 'var(--color-secondary)', color: 'var(--color-secondary-fg)', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+          className="inline-flex min-h-11 items-center justify-center rounded-lg bg-secondary px-6 text-secondary-fg"
         >
           壁の詳細へ戻る
         </button>
@@ -119,30 +120,21 @@ export default function WallARPage() {
 
   if (!arData) {
     return (
-      <div style={{ background: 'var(--color-bg-inverse)', position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-        <div style={{ color: 'var(--color-fg-inverse)', textAlign: 'center', display: 'grid', gap: 12 }}>
-          <div className="ar-spinner" style={{ borderColor: 'rgba(255, 248, 244, 0.3)', borderTopColor: 'var(--color-fg-inverse)', margin: '0 auto' }} />
-          <p style={{ margin: 0, fontSize: 14 }}>AR を準備中...</p>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-bg-inverse">
+        <div className="grid gap-3 text-center text-fg-inverse">
+          <Spinner tone="inverse" />
+          <p className="m-0 text-sm">AR を準備中...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'var(--color-bg-inverse)', overflow: 'hidden', zIndex: 100 }}>
-      <div style={{ position: 'fixed', top: 16, left: 16, zIndex: 110 }}>
+    <div className="fixed inset-0 z-[100] overflow-hidden bg-bg-inverse">
+      <div className="fixed top-4 left-4 z-[110]">
         <button
           onClick={() => { window.location.href = `/walls/${wallId}`; }}
-          style={{
-            padding: '8px 16px',
-            background: 'rgba(20, 17, 14, 0.62)',
-            color: 'var(--color-fg-inverse)',
-            borderRadius: 999,
-            border: '1px solid rgba(255, 248, 244, 0.2)',
-            fontSize: 14,
-            cursor: 'pointer',
-            backdropFilter: 'blur(8px)',
-          }}
+          className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/20 bg-[rgba(20,17,14,0.62)] px-4 text-sm text-fg-inverse backdrop-blur-sm"
         >
           ← 戻る
         </button>

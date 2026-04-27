@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import ScanGuide from './ScanGuide';
+import { Spinner } from '../Spinner';
 
 interface Props {
   rectifiedUrl: string;
@@ -288,26 +289,26 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
         }}
       />
 
-      <div style={{ position: 'fixed', inset: 0, background: 'var(--color-bg-inverse)', zIndex: 10 }}>
-        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div className="fixed inset-0 z-10 bg-bg-inverse">
+        <div className="h-full w-full" ref={containerRef} />
       </div>
 
-      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 30 }}>
+      <div className="pointer-events-none fixed inset-0 z-30">
         {phase === 'loading' && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <div style={{ color: 'var(--color-fg-inverse)', textAlign: 'center', display: 'grid', gap: 12 }}>
-              <div className="ar-spinner" style={{ borderColor: 'rgba(255, 248, 244, 0.3)', borderTopColor: 'var(--color-fg-inverse)', margin: '0 auto' }} />
-              <p style={{ margin: 0, fontSize: 14 }}>AR 機能を読み込み中...</p>
+          <div className="flex h-full items-center justify-center">
+            <div className="grid gap-3 text-center text-fg-inverse">
+              <Spinner tone="inverse" />
+              <p className="m-0 text-sm">AR 機能を読み込み中...</p>
             </div>
           </div>
         )}
 
         {phase === 'compiling' && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <div style={{ color: 'var(--color-fg-inverse)', textAlign: 'center', display: 'grid', gap: 12 }}>
-              <div className="ar-spinner" style={{ borderColor: 'rgba(22, 101, 52, 0.3)', borderTopColor: 'var(--color-success)', margin: '0 auto' }} />
-              <p style={{ margin: 0, fontSize: 14 }}>壁のマーカーを生成中...</p>
-              <p style={{ margin: 0, fontSize: 12, color: 'rgba(255, 248, 244, 0.62)' }}>初回は 10〜20 秒かかります</p>
+          <div className="flex h-full items-center justify-center">
+            <div className="grid gap-3 text-center text-fg-inverse">
+              <Spinner tone="success" />
+              <p className="m-0 text-sm">壁のマーカーを生成中...</p>
+              <p className="m-0 text-xs text-white/60">初回は 10〜20 秒かかります</p>
             </div>
           </div>
         )}
@@ -315,22 +316,13 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
         {phase === 'scanning' && <ScanGuide />}
 
         {phase === 'error' && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', pointerEvents: 'auto' }}>
-            <div style={{
-              background: 'rgba(20, 17, 14, 0.82)',
-              color: 'var(--color-fg-inverse)',
-              padding: '24px',
-              borderRadius: 18,
-              textAlign: 'center',
-              maxWidth: 300,
-              display: 'grid',
-              gap: 10,
-            }}>
-              <p style={{ margin: 0, color: 'var(--color-danger)', fontWeight: 600 }}>エラーが発生しました</p>
-              <p style={{ margin: 0, fontSize: 13, color: 'rgba(255, 248, 244, 0.82)' }}>{errorMsg}</p>
+          <div className="pointer-events-auto flex h-full items-center justify-center">
+            <div className="grid max-w-[300px] gap-2.5 rounded-[18px] bg-[rgba(20,17,14,0.82)] p-6 text-center text-fg-inverse">
+              <p className="m-0 font-semibold text-danger">エラーが発生しました</p>
+              <p className="m-0 text-[13px] text-white/80">{errorMsg}</p>
               <button
                 onClick={() => { startedRef.current = false; startAR(); }}
-                style={{ marginTop: 8, padding: '10px 20px', background: 'var(--color-success)', color: 'var(--color-fg-inverse)', border: 'none', borderRadius: 10, fontSize: 14, cursor: 'pointer' }}
+                className="mt-2 inline-flex min-h-11 items-center justify-center rounded-[10px] bg-success px-5 text-sm text-fg-inverse"
               >
                 再試行
               </button>

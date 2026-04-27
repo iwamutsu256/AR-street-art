@@ -54,7 +54,7 @@ export function ConfirmationDialog({
 
   return (
     <div
-      className="dialog-backdrop"
+      className="fixed inset-0 z-[120] grid place-items-center bg-[rgba(31,26,20,0.38)] p-6 backdrop-blur-sm max-[720px]:p-4"
       onClick={onCancel}
       role="presentation"
     >
@@ -62,22 +62,22 @@ export function ConfirmationDialog({
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
-        className="dialog"
+        className="grid w-full max-w-[420px] gap-5 rounded-3xl border border-border bg-bg-elevated p-6 shadow-[var(--shadow-elevated)] max-[720px]:rounded-[20px] max-[720px]:p-5"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
       >
         <div className="stack-sm">
-          <h2 className="dialog__title" id={titleId}>
+          <h2 className="m-0 text-lg leading-snug" id={titleId}>
             {title}
           </h2>
-          <p className="dialog__description" id={descriptionId}>
+          <p className="m-0 leading-7 text-fg-muted" id={descriptionId}>
             {description}
           </p>
         </div>
 
-        <div className="dialog__actions">
+        <div className="flex flex-wrap justify-end gap-3 max-[720px]:flex-col-reverse">
           <button
-            className="button button-secondary"
+            className="button button-secondary max-[720px]:w-full"
             onClick={onCancel}
             type="button"
           >
@@ -86,8 +86,8 @@ export function ConfirmationDialog({
           <button
             className={
               confirmTone === "destructive"
-                ? "button button-destructive"
-                : "button button-primary"
+                ? "button button-destructive max-[720px]:w-full"
+                : "button button-primary max-[720px]:w-full"
             }
             onClick={onConfirm}
             type="button"

@@ -40,6 +40,23 @@ const DEFAULT_CENTER: LocationValue = {
 const LOCATION_JUMP_ZOOM = 8;
 const INITIAL_REGION_ZOOM = 7;
 const FOCUSED_WALL_ZOOM = 15;
+const WALL_MARKER_BASE_CLASS_NAME =
+  "group grid h-[42px] w-9 place-items-center border-0 bg-transparent p-0";
+const WALL_MARKER_DOT_BASE_CLASS_NAME =
+  "block h-6 w-6 rotate-[-45deg] rounded-[50%_50%_50%_0] border-[3px] border-white/95 bg-primary shadow-[0_8px_20px_rgba(31,26,20,0.28)] transition duration-150 group-hover:scale-[1.12] group-hover:bg-primary-active group-focus-visible:scale-[1.12] group-focus-visible:bg-primary-active";
+const WALL_MARKER_DOT_SELECTED_CLASS_NAME = "scale-[1.12] bg-primary-active";
+
+function toggleWallMarkerSelected(element: HTMLElement, isSelected: boolean) {
+  const dot = element.firstElementChild;
+
+  if (!(dot instanceof HTMLElement)) {
+    return;
+  }
+
+  for (const className of WALL_MARKER_DOT_SELECTED_CLASS_NAME.split(" ")) {
+    dot.classList.toggle(className, isSelected);
+  }
+}
 
 function normalizeLocation(latitude: number, longitude: number): LocationValue {
   return {
@@ -95,11 +112,11 @@ async function getApproximateIpLocation(mapTilerKey: string) {
 function createWallMarkerElement(wall: WallSummary) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "wall-map-pin";
+  button.className = WALL_MARKER_BASE_CLASS_NAME;
   button.setAttribute("aria-label", `${wall.name} の詳細を表示`);
 
   const dot = document.createElement("span");
-  dot.className = "wall-map-pin__dot";
+  dot.className = WALL_MARKER_DOT_BASE_CLASS_NAME;
   button.appendChild(dot);
 
   return button;
@@ -107,7 +124,8 @@ function createWallMarkerElement(wall: WallSummary) {
 
 function createUserLocationElement() {
   const element = document.createElement("div");
-  element.className = "wall-map-user-dot";
+  element.className =
+    "relative block h-[18px] w-[18px] rounded-full border-[3px] border-white bg-secondary shadow-[0_8px_22px_rgba(37,99,235,0.35)] after:absolute after:inset-[-10px] after:rounded-full after:bg-[rgba(37,99,235,0.16)] after:content-['']";
   element.setAttribute("aria-label", "現在地");
   return element;
 }
@@ -222,8 +240,8 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
       }
 
       const element = createWallMarkerElement(wall);
-      element.classList.toggle(
-        "is-selected",
+      toggleWallMarkerSelected(
+        element,
         selectedWallIdRef.current === wall.id,
       );
       element.addEventListener("click", (event) => {
@@ -441,9 +459,10 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
     selectedWallIdRef.current = selectedSummary?.id ?? null;
 
     for (const [wallId, marker] of markersRef.current) {
-      marker
-        .getElement()
-        .classList.toggle("is-selected", wallId === selectedSummary?.id);
+      toggleWallMarkerSelected(
+        marker.getElement(),
+        wallId === selectedSummary?.id,
+      );
     }
   }, [selectedSummary?.id]);
 
@@ -493,7 +512,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
 
   if (!mapTilerKey) {
     return (
-      <div className="wall-map">
+      <div className="relative h-full min-h-[540px] w-full overflow-hidden border border-border bg-bg-muted shadow-[var(--shadow-elevated)] max-[720px]:min-h-[460px]">
         <div className="empty-state">
           <div>
             <strong>NEXT_PUBLIC_MAPTILER_KEY</strong>{" "}
@@ -505,21 +524,24 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
   }
 
   return (
-    <div className="wall-map">
+    <div className="relative h-full min-h-[540px] w-full overflow-hidden border border-border bg-bg-muted shadow-[var(--shadow-elevated)] max-[720px]:min-h-[460px]">
       {initialView ? (
-        <div className="wall-map__canvas" ref={containerRef} />
+        <div className="absolute inset-0 h-full w-full" ref={containerRef} />
       ) : null}
 
       {!initialView ? (
-        <div className="wall-map__loading" role="status">
+        <div
+          className="absolute inset-0 z-20 grid place-items-center bg-overlay font-bold text-fg-muted"
+          role="status"
+        >
           地図を準備中…
         </div>
       ) : null}
 
-      <div className="wall-map__controls">
+      <div className="absolute right-[58px] top-3.5 z-30 flex gap-2 max-[720px]:right-[54px] max-[720px]:top-2.5">
         <button
           aria-label="現在地へ移動"
-          className="wall-map__icon-button"
+          className="grid h-[42px] w-[42px] place-items-center rounded-full border border-border bg-bg-elevated shadow-[0_10px_28px_rgba(31,26,20,0.14)] transition hover:-translate-y-px hover:border-border-strong hover:bg-white focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-white disabled:cursor-not-allowed disabled:opacity-55"
           disabled={!userLocation}
           onClick={handleFocusUserLocation}
           title="現在地へ移動"
@@ -530,30 +552,36 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
       </div>
 
       {mapError ? (
-        <div className="wall-map__toast" role="alert">
+        <div
+          className="absolute left-3.5 top-3.5 z-30 max-w-[min(360px,calc(100%-28px))] rounded-2xl border border-[rgba(180,35,24,0.18)] bg-[rgba(255,246,243,0.94)] px-3.5 py-3 text-danger shadow-[0_12px_30px_rgba(31,26,20,0.12)] max-[720px]:left-2.5 max-[720px]:top-2.5 max-[720px]:max-w-[calc(100%-20px)]"
+          role="alert"
+        >
           {mapError}
         </div>
       ) : null}
 
       {wallFetchError ? (
-        <div className="wall-map__toast wall-map__toast--below" role="alert">
+        <div
+          className="absolute left-3.5 top-[66px] z-30 max-w-[min(360px,calc(100%-28px))] rounded-2xl border border-[rgba(180,35,24,0.18)] bg-[rgba(255,246,243,0.94)] px-3.5 py-3 text-danger shadow-[0_12px_30px_rgba(31,26,20,0.12)] max-[720px]:left-2.5 max-[720px]:top-[60px] max-[720px]:max-w-[calc(100%-20px)]"
+          role="alert"
+        >
           {wallFetchError}
         </div>
       ) : null}
 
       <section
         aria-live="polite"
-        className={`wall-map-detail${selectedSummary ? " is-open" : ""}`}
+        className={`absolute inset-x-0 bottom-0 z-40 transition-transform duration-200 ${selectedSummary ? "pointer-events-auto translate-y-0" : "pointer-events-none translate-y-[calc(100%+32px)]"}`}
       >
         {selectedSummary ? (
-          <div className="wall-map-detail__inner p-4">
-            <div className="flex justify-between gap-3 mb-3">
+          <div className="relative rounded-t-[22px] border border-border bg-bg-elevated p-4 shadow-[0_18px_48px_rgba(31,26,20,0.2)] backdrop-blur-[14px]">
+            <div className="mb-3 flex justify-between gap-3">
               <h2 className="text-2xl font-bold truncate">
                 {selectedWallName}
               </h2>
               <button
                 aria-label="詳細を閉じる"
-                className="wall-map-detail__close"
+                className="grid h-[34px] w-[34px] place-items-center rounded-full border border-border bg-bg-elevated transition hover:-translate-y-px hover:border-border-strong hover:bg-white focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-white"
                 onClick={() => {
                   setSelectedSummary(null);
                   setSelectedDetail(null);
@@ -565,32 +593,38 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="max-w-50 max-h-50 aspect-square rounded-lg overflow-hidden">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="aspect-square max-w-[13rem] overflow-hidden rounded-lg bg-bg-muted">
                 {detailImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img alt={selectedWallName} src={detailImageUrl} />
+                  <img
+                    alt={selectedWallName}
+                    className="h-full w-full object-cover"
+                    src={detailImageUrl}
+                  />
                 ) : (
-                  <div className="bg-bg-muted">No Image</div>
+                  <div className="grid h-full place-items-center bg-bg-muted text-sm text-fg-muted">
+                    No Image
+                  </div>
                 )}
               </div>
               <div className="flex flex-col justify-between">
-                <div className="wall-map-detail__facts">
-                  <p>
+                <div className="grid gap-2 text-sm leading-6 text-fg-muted">
+                  <p className="m-0">
                     {selectedCanvas
                       ? `${selectedCanvas.width} x ${selectedCanvas.height}px`
                       : detailStatus === "loading"
                         ? "Canvas 読込中"
                         : "Canvas 未設定"}
                   </p>
-                  <p>
+                  <p className="m-0">
                     {selectedCanvas
                       ? `${selectedCanvas.activeConnectionCount} 人が接続中`
                       : "0 人が接続中"}
                   </p>
                 </div>
                 {detailStatus === "error" ? (
-                  <div className="wall-map-detail__status">
+                  <div className="text-sm text-danger">
                     詳細を取得できませんでした。
                   </div>
                 ) : null}

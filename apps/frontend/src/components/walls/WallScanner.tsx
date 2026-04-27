@@ -220,17 +220,17 @@ export function WallScanner({
   }, []);
 
   return (
-    <div className="scanner-shell">
-      <div className="scanner-view">
+    <div className="grid gap-4">
+      <div className="relative min-h-[360px] overflow-hidden rounded-[22px] bg-bg-inverse">
         <video
           autoPlay
-          className="scanner-video"
+          className="h-[min(68vh,620px)] min-h-[360px] w-full bg-bg-inverse object-cover max-[720px]:h-[56vh]"
           muted
           playsInline
           ref={videoRef}
         />
-        <div className="scanner-status">
-          <ul className="scanner-guidance-list">
+        <div className="absolute inset-x-4 bottom-4 grid gap-2 rounded-[18px] border border-bg-elevated bg-[rgba(255,250,241,0.9)] p-3.5 shadow-[0_14px_34px_rgba(20,17,14,0.22)] max-[720px]:inset-x-2.5 max-[720px]:bottom-2.5">
+          <ul className="m-0 grid gap-1.5 pl-5 font-bold leading-relaxed text-fg">
             {SCAN_GUIDANCE.map((message) => (
               <li key={message}>{message}</li>
             ))}

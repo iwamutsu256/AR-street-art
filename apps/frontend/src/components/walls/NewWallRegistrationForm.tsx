@@ -255,61 +255,94 @@ function CanvasSizePreview({
     "--wall-canvas-preview-width-label-top": `${(horizontalLineY / viewBoxHeight) * 100}%`,
     "--wall-canvas-preview-height-label-left": `${(verticalLineX / viewBoxWidth) * 100}%`,
   } as CSSProperties;
+  const measureBadgeStyle = {
+    background: "var(--wall-canvas-preview-measure-color)",
+    color: "var(--wall-canvas-preview-measure-text-color)",
+  } as CSSProperties;
 
   return (
-    <div className="wall-canvas-preview" style={style}>
-      <div className="wall-canvas-preview__surface">
+    <div className="mx-auto w-full max-w-[1040px]" style={style}>
+      <div
+        className="relative isolate overflow-hidden border border-border shadow-[var(--shadow-elevated)]"
+        style={{
+          aspectRatio: "var(--wall-canvas-preview-aspect-ratio, 1 / 1)",
+          background:
+            "radial-gradient(circle at top, rgba(255, 255, 255, 0.14), transparent 44%), #171310",
+        }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          className="wall-canvas-preview__image"
+          className="h-full w-full object-cover"
           src={imageUrl}
           alt="キャンバスサイズのプレビュー"
         />
-        <div aria-hidden="true" className="wall-canvas-preview__scrim" />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(20, 17, 14, 0.12), rgba(20, 17, 14, 0.46))",
+          }}
+        />
         <svg
           aria-hidden="true"
-          className="wall-canvas-preview__overlay"
+          className="pointer-events-none absolute inset-0 h-full w-full drop-shadow-[0_2px_6px_rgba(20,17,14,0.42)]"
           viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
         >
           <line
-            className="wall-canvas-preview__measure-line"
+            className="fill-none stroke-[var(--wall-canvas-preview-measure-color)] stroke-[2.2] [stroke-linecap:square] [vector-effect:non-scaling-stroke]"
             x1="0"
             x2={viewBoxWidth}
             y1={horizontalLineY}
             y2={horizontalLineY}
           />
           <polygon
-            className="wall-canvas-preview__measure-head"
+            className="fill-[var(--wall-canvas-preview-measure-color)] [vector-effect:non-scaling-stroke]"
             points={`0,${horizontalLineY} ${arrowHeadDepth},${horizontalLineY - arrowHeadHalfSpan} ${arrowHeadDepth},${horizontalLineY + arrowHeadHalfSpan}`}
           />
           <polygon
-            className="wall-canvas-preview__measure-head"
+            className="fill-[var(--wall-canvas-preview-measure-color)] [vector-effect:non-scaling-stroke]"
             points={`${viewBoxWidth},${horizontalLineY} ${viewBoxWidth - arrowHeadDepth},${horizontalLineY - arrowHeadHalfSpan} ${viewBoxWidth - arrowHeadDepth},${horizontalLineY + arrowHeadHalfSpan}`}
           />
           <line
-            className="wall-canvas-preview__measure-line"
+            className="fill-none stroke-[var(--wall-canvas-preview-measure-color)] stroke-[2.2] [stroke-linecap:square] [vector-effect:non-scaling-stroke]"
             x1={verticalLineX}
             x2={verticalLineX}
             y1="0"
             y2={viewBoxHeight}
           />
           <polygon
-            className="wall-canvas-preview__measure-head"
+            className="fill-[var(--wall-canvas-preview-measure-color)] [vector-effect:non-scaling-stroke]"
             points={`${verticalLineX},0 ${verticalLineX - arrowHeadHalfSpan},${arrowHeadDepth} ${verticalLineX + arrowHeadHalfSpan},${arrowHeadDepth}`}
           />
           <polygon
-            className="wall-canvas-preview__measure-head"
+            className="fill-[var(--wall-canvas-preview-measure-color)] [vector-effect:non-scaling-stroke]"
             points={`${verticalLineX},${viewBoxHeight} ${verticalLineX - arrowHeadHalfSpan},${viewBoxHeight - arrowHeadDepth} ${verticalLineX + arrowHeadHalfSpan},${viewBoxHeight - arrowHeadDepth}`}
           />
         </svg>
-        <div className="wall-canvas-preview__dimension wall-canvas-preview__dimension--width">
-          <span>{formatPixelMeasure(safeWidth)}</span>
+        <div className="pointer-events-none absolute left-1/2 top-[var(--wall-canvas-preview-width-label-top,9%)] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+          <span
+            className="inline-flex min-h-10 items-center justify-center rounded-full px-[18px] text-[clamp(0.84rem,2vw,1rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[0_14px_32px_rgba(20,17,14,0.22)] backdrop-blur-[10px]"
+            style={measureBadgeStyle}
+          >
+            {formatPixelMeasure(safeWidth)}
+          </span>
         </div>
-        <div className="wall-canvas-preview__dimension wall-canvas-preview__dimension--height">
-          <span>{formatPixelMeasure(safeHeight)}</span>
+        <div className="pointer-events-none absolute left-[var(--wall-canvas-preview-height-label-left,91%)] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+          <span
+            className="-rotate-90 inline-flex min-h-10 items-center justify-center rounded-full px-[18px] text-[clamp(0.84rem,2vw,1rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[0_14px_32px_rgba(20,17,14,0.22)] backdrop-blur-[10px]"
+            style={measureBadgeStyle}
+          >
+            {formatPixelMeasure(safeHeight)}
+          </span>
         </div>
-        <div className="wall-canvas-preview__total">
-          <span>{formatPixelCount(pixelCount)}</span>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+          <span
+            className="inline-flex min-h-12 items-center justify-center rounded-full px-5 text-[clamp(0.96rem,2.4vw,1.28rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[0_14px_32px_rgba(20,17,14,0.22)] backdrop-blur-[10px]"
+            style={measureBadgeStyle}
+          >
+            {formatPixelCount(pixelCount)}
+          </span>
         </div>
       </div>
     </div>
@@ -326,8 +359,8 @@ function StepNavigation({
   onNext,
 }: StepNavigationProps) {
   return (
-    <div className="step-navigation">
-      <div>
+    <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="w-full sm:w-auto">
         {children}
         {hideNext ? null : (
           <button
@@ -950,7 +983,7 @@ export function NewWallRegistrationForm({
       </div>
       <div className="flex items-center justify-center w-full relative">
         {isUploadProcessing ? (
-          <div className="processing-overlay rounded-lg">
+          <div className="absolute inset-0 z-[60] grid place-items-center rounded-lg bg-[rgba(255,250,241,0.94)] p-6 backdrop-blur-[6px]">
             <div className="text-center">
               <Spinner label={uploadPhase ?? undefined} size="lg" />
             </div>
@@ -985,7 +1018,7 @@ export function NewWallRegistrationForm({
       </ul>
 
       {uploadIssues.length > 0 ? (
-        <div className="error-banner" style={{ marginTop: 16 }}>
+        <div className="error-banner mt-4">
           <strong>この画像はアップロードできません。</strong>
           <ul>
             {uploadIssues.map((message) => (
@@ -1073,11 +1106,11 @@ export function NewWallRegistrationForm({
       </div>
 
       {rectifiedPreview ? (
-        <div className="aspect-adjuster">
-          <div className="aspect-preview-shell">
-            <div className="aspect-preview-stage">
+        <div className="grid items-center gap-[18px] max-[720px]:grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.62fr)]">
+          <div className="grid min-h-80 place-items-center">
+            <div className="grid aspect-square w-full max-w-[440px] place-items-center">
               <div
-                className="aspect-preview"
+                className="max-h-full max-w-full justify-self-center overflow-hidden border border-border-strong bg-bg shadow-[0_18px_42px_rgba(31,26,20,0.16)] transition-[width,height] duration-150"
                 style={{
                   width: `${aspectPreviewFrame.widthPercent}%`,
                   height: `${aspectPreviewFrame.heightPercent}%`,
@@ -1085,7 +1118,7 @@ export function NewWallRegistrationForm({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  className="aspect-preview__image"
+                  className="block h-full w-full object-fill"
                   src={rectifiedPreview.previewUrl}
                   alt="比率調整中の rectified プレビュー"
                 />
@@ -1094,7 +1127,7 @@ export function NewWallRegistrationForm({
           </div>
 
           <div className="stack-md">
-            <label>
+            <label className="grid gap-3 font-bold">
               <span>{formatAspectRatio(aspectRatioValue)}</span>
               <input
                 className="range-input"
@@ -1110,7 +1143,10 @@ export function NewWallRegistrationForm({
                 value={aspectRatioSliderValue}
               />
             </label>
-            <div className="range-labels" aria-hidden="true">
+            <div
+              className="flex justify-between gap-3 text-sm font-bold text-fg-muted"
+              aria-hidden="true"
+            >
               <span>{formatAspectRatio(ASPECT_RATIO_MIN)}</span>
               <span>1.00:1</span>
               <span>{formatAspectRatio(ASPECT_RATIO_MAX)}</span>
@@ -1215,7 +1251,7 @@ export function NewWallRegistrationForm({
         <div className="notice">{scanLocationMessage}</div>
       ) : null}
 
-      <div className="field-grid field-grid--two" style={{ marginBottom: 16 }}>
+      <div className="mb-4 grid gap-4">
         <label className="field-label">
           壁の名称
           <input
@@ -1289,18 +1325,20 @@ export function NewWallRegistrationForm({
         </div>
       </div>
 
-      <div className="wall-review" style={{ marginBottom: 16 }}>
-        <section className="section-card wall-review__section">
+      <div className="mb-4 grid gap-5">
+        <section className="section-card grid gap-4">
           <div className="stack-sm">
-            <h3 className="wall-review__section-title">壁名</h3>
-            <p className="wall-review__name">{values.name.trim()}</p>
+            <h3 className="m-0 text-lg leading-6">壁名</h3>
+            <p className="m-0 text-[clamp(1.8rem,3vw,2.6rem)] leading-none">
+              {values.name.trim()}
+            </p>
           </div>
         </section>
 
-        <section className="section-card wall-review__section">
+        <section className="section-card grid gap-4">
           <div className="stack-sm">
             <div className="stack-sm">
-              <h3 className="wall-review__section-title">位置情報</h3>
+              <h3 className="m-0 text-lg leading-6">位置情報</h3>
             </div>
             <LocationPreviewMap
               mapTilerKey={mapTilerKey}
@@ -1309,10 +1347,10 @@ export function NewWallRegistrationForm({
           </div>
         </section>
 
-        <section className="section-card wall-review__section">
+        <section className="section-card grid gap-4">
           <div className="stack-sm">
             <div className="stack-sm">
-              <h3 className="wall-review__section-title">壁画像とサイズ</h3>
+              <h3 className="m-0 text-lg leading-6">壁画像とサイズ</h3>
               <p className="muted-copy">
                 {canvasDimensions.width} x {canvasDimensions.height}px
                 のキャンバスとして登録されます。
@@ -1337,7 +1375,7 @@ export function NewWallRegistrationForm({
 
       {submitPhase ? <div className="notice">{submitPhase}</div> : null}
 
-      <div className="step-navigation">
+      <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <button
           className="button button-secondary w-full justify-center"
           onClick={goBack}
@@ -1391,13 +1429,13 @@ export function NewWallRegistrationForm({
       {renderProgress()}
       <form
         aria-busy={isUploadProcessing}
-        className="new-wall-registration-form"
+        className="relative mx-auto w-full max-w-[1120px] px-4 pt-6 pb-10 max-[720px]:px-2.5 max-[720px]:pt-[18px] max-[720px]:pb-7"
         onSubmit={handleSubmit}
       >
         {success ? (
           <div className="success-banner">
             <strong>{success.name} を登録しました。</strong>
-            <div className="stack-sm" style={{ marginTop: 8 }}>
+            <div className="stack-sm mt-2">
               <div>
                 キャンバスサイズ: {success.canvas?.width} x{" "}
                 {success.canvas?.height}px

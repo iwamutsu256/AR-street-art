@@ -57,10 +57,10 @@ export default async function WallDetailPage({ params }: WallDetailPageProps) {
         </div>
       </div>
 
-      <section className="section-card wall-detail-grid">
+      <section className="section-card grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
         <div className="stack-sm">
           <div className="step-badge">Preview</div>
-          <div className="wall-detail-image">
+          <div className="overflow-hidden rounded-3xl border border-border bg-bg-elevated">
             {wall.rectifiedImageUrl || wall.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -76,24 +76,24 @@ export default async function WallDetailPage({ params }: WallDetailPageProps) {
         <div className="stack-md">
           <div className="stack-sm">
             <div className="step-badge">Canvas</div>
-            <h2 className="section-title" style={{ fontSize: '1.3rem' }}>
+            <h2 className="section-title text-[1.3rem]">
               編集キャンバス
             </h2>
           </div>
 
           {wall.canvas ? (
-            <div className="info-grid">
-              <div className="info-card">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="rounded-2xl border border-border bg-bg-elevated p-5">
                 <div className="muted-copy">Canvas ID</div>
                 <div className="mono">{wall.canvas.id}</div>
               </div>
-              <div className="info-card">
+              <div className="rounded-2xl border border-border bg-bg-elevated p-5">
                 <div className="muted-copy">サイズ</div>
                 <div>
                   {wall.canvas.width} x {wall.canvas.height}px
                 </div>
               </div>
-              <div className="info-card">
+              <div className="rounded-2xl border border-border bg-bg-elevated p-5">
                 <div className="muted-copy">パレット</div>
                 <div>{wall.canvas.paletteVersion}</div>
               </div>
@@ -102,18 +102,18 @@ export default async function WallDetailPage({ params }: WallDetailPageProps) {
             <div className="notice">この壁にはまだキャンバスがありません。</div>
           )}
 
-          <div className="info-grid">
-            <div className="info-card">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-2xl border border-border bg-bg-elevated p-5">
               <div className="muted-copy">緯度経度</div>
               <div>
                 {wall.latitude}, {wall.longitude}
               </div>
             </div>
-            <div className="info-card">
+            <div className="rounded-2xl border border-border bg-bg-elevated p-5">
               <div className="muted-copy">表示半径</div>
               <div>{wall.visibilityRadiusM}m</div>
             </div>
-            <div className="info-card">
+            <div className="rounded-2xl border border-border bg-bg-elevated p-5">
               <div className="muted-copy">方角</div>
               <div>{wall.approxHeading ?? '未設定'}</div>
             </div>

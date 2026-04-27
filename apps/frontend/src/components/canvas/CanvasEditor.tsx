@@ -346,20 +346,6 @@ export function CanvasEditor({
     };
   }, []);
 
-  useEffect(() => {
-    const pageShell = editorRef.current?.closest(".page-shell--editor");
-
-    if (!(pageShell instanceof HTMLElement)) {
-      return;
-    }
-
-    pageShell.classList.toggle("page-shell--editor--mobile", isMobileLayout);
-
-    return () => {
-      pageShell.classList.remove("page-shell--editor--mobile");
-    };
-  }, [isMobileLayout]);
-
   const drawDirtyPixels = useCallback(() => {
     if (dirtyPixelsRef.current.length === 0) {
       return;
@@ -1242,22 +1228,22 @@ export function CanvasEditor({
           <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
             {palette.length} colors + transparent
           </h2>
-          <div className="canvas-selected-color">
+          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2.5 border border-border bg-bg-elevated px-3 py-2 text-fg-muted">
             <span>選択中</span>
             <strong>{selectedColorLabel}</strong>
             <i
-              className={`canvas-selected-color__swatch${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-transparent" : ""}`}
+              className={`size-7 overflow-hidden border border-[rgba(31,26,20,0.14)] bg-bg-elevated${selectedColor === TRANSPARENT_PIXEL_VALUE ? " transparent-swatch" : ""}`}
               style={selectedColorHex ? { backgroundColor: selectedColorHex } : undefined}
             />
           </div>
         </div>
 
-        <div className="palette-grid">
+        <div className="grid grid-cols-4 border border-border bg-white/80">
           {palette.map((color, index) => (
             <button
               key={`${index}-${color}`}
               aria-label={`color ${index + 1}`}
-              className={`palette-swatch${selectedColor === index + 1 ? " is-selected" : ""}`}
+              className={`relative min-h-12 cursor-pointer border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)] transition hover:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:outline-none${selectedColor === index + 1 ? " shadow-[inset_0_0_0_2px_var(--color-primary-active)]" : ""}`}
               onClick={() => setSelectedColor(index + 1)}
               style={{ backgroundColor: color }}
               type="button"
@@ -1265,7 +1251,7 @@ export function CanvasEditor({
           ))}
           <button
             aria-label="transparent"
-            className={`palette-swatch palette-swatch--transparent${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-selected" : ""}`}
+            className={`transparent-swatch relative min-h-12 cursor-pointer border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)] transition hover:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:outline-none${selectedColor === TRANSPARENT_PIXEL_VALUE ? " shadow-[inset_0_0_0_2px_var(--color-primary-active)]" : ""}`}
             onClick={() => setSelectedColor(TRANSPARENT_PIXEL_VALUE)}
             type="button"
           />
@@ -1284,32 +1270,32 @@ export function CanvasEditor({
           </h2>
         </div>
 
-        <div className="canvas-info-list">
-          <div className="canvas-info-row">
+        <div className="grid gap-2.5">
+          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
             <span>接続状態</span>
             <strong className={`tag tag--${connectionState}`}>
               {connectionLabel[connectionState]}
             </strong>
           </div>
-          <div className="canvas-info-row">
+          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
             <span>サイズ</span>
             <strong>
               {initialSnapshot.width} x {initialSnapshot.height}px
             </strong>
           </div>
-          <div className="canvas-info-row">
+          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
             <span>パレット</span>
             <strong>
               {initialSnapshot.paletteVersion} / {palette.length}色 + 透明
             </strong>
           </div>
-          <div className="canvas-info-row">
+          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
             <span>カーソル</span>
             <strong>
               {cursorPixel.x}, {cursorPixel.y}
             </strong>
           </div>
-          <div className="canvas-info-row">
+          <div className="flex items-center justify-between gap-3 border border-border bg-bg-elevated px-3 py-2">
             <span>ズーム</span>
             <strong>{Math.round(zoom * 100)}%</strong>
           </div>
@@ -1322,13 +1308,17 @@ export function CanvasEditor({
 
   function renderStage() {
     return (
-      <div className="canvas-stage-shell canvas-stage-shell--main">
+      <div className="min-h-0 min-w-0 border border-border bg-bg-elevated p-3.5 shadow-[var(--shadow-elevated)]">
         <div
-          className={`canvas-stage${stageIsPannable ? " is-pannable" : ""}`}
+          className={`relative h-full min-h-0 overflow-hidden border border-[rgba(31,26,20,0.08)]${stageIsPannable ? " cursor-grab" : " cursor-crosshair"}`}
+          style={{
+            background:
+              "radial-gradient(circle at top left, rgba(255, 211, 144, 0.24), transparent 34%), repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.6) 0, rgba(255, 255, 255, 0.6) 1px, transparent 1px, transparent 28px), repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.6) 0, rgba(255, 255, 255, 0.6) 1px, transparent 1px, transparent 28px), linear-gradient(135deg, rgba(255, 252, 245, 0.96), rgba(240, 229, 209, 0.94))",
+          }}
           ref={stageRef}
         >
           <div
-            className="canvas-stage__surface"
+            className="absolute block overflow-hidden bg-[#fff8f0] shadow-[0_28px_60px_rgba(50,33,15,0.16)]"
             style={{
               left: surfaceFrame.left,
               top: surfaceFrame.top,
@@ -1337,18 +1327,20 @@ export function CanvasEditor({
             }}
           >
             <div
-              className="canvas-stage__reference"
+              className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat opacity-[0.18] pointer-events-none"
               style={referenceBackgroundStyle}
             />
             <div
-              className="canvas-stage__grid"
+              className="absolute inset-0 z-[2] pointer-events-none"
               style={{
                 backgroundSize: `${zoom}px ${zoom}px`,
+                backgroundImage:
+                  "linear-gradient(to right, rgba(31, 26, 20, 0.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(31, 26, 20, 0.16) 1px, transparent 1px)",
                 opacity: zoom >= 6 ? 0.72 : zoom >= 3 ? 0.42 : 0.22,
               }}
             />
             <canvas
-              className="canvas-stage__canvas"
+              className={stageIsPannable ? "relative z-[1] block touch-none [image-rendering:pixelated] cursor-grab" : "relative z-[1] block touch-none [image-rendering:pixelated] cursor-crosshair"}
               height={initialSnapshot.height}
               onContextMenu={(event) => event.preventDefault()}
               onPointerDown={handlePointerDown}
@@ -1363,7 +1355,7 @@ export function CanvasEditor({
               width={initialSnapshot.width}
             />
             <div
-              className="canvas-stage__cursor"
+              className="pointer-events-none absolute left-0 top-0 z-[3] border border-[rgba(182,76,45,0.94)] bg-[rgba(182,76,45,0.18)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
               style={{
                 width: zoom,
                 height: zoom,
@@ -1378,7 +1370,7 @@ export function CanvasEditor({
 
   return (
     <section
-      className={`canvas-editor${isMobileLayout ? " is-mobile" : ""}`}
+      className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]${isMobileLayout ? " gap-3" : " gap-[18px]"}`}
       ref={editorRef}
     >
       <AppHeader
@@ -1399,20 +1391,22 @@ export function CanvasEditor({
       />
 
       {isMobileLayout ? (
-        <div className="canvas-editor__mobile">
-          <div className="canvas-mobile__stage">{renderStage()}</div>
+        <div className="grid min-h-0 content-start gap-3 overflow-y-auto px-4 pb-4">
+          <div className="grid min-h-0 w-full aspect-square self-start">
+            {renderStage()}
+          </div>
 
-          <div className="canvas-mobile__toolbar" ref={toolbarRef}>
-            <div className="canvas-mobile-toolbar__item">
+          <div className="relative grid grid-cols-2 gap-3" ref={toolbarRef}>
+            <div className="relative">
               <button
                 aria-expanded={openPopover === "palette"}
                 aria-haspopup="dialog"
-                className="canvas-mobile-toolbar__button"
+                className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 border border-border bg-bg-elevated px-3.5 text-fg shadow-[var(--shadow-elevated)]"
                 onClick={() => togglePopover("palette")}
                 type="button"
               >
                 <span
-                  className={`canvas-mobile-toolbar__swatch${selectedColor === TRANSPARENT_PIXEL_VALUE ? " is-transparent" : ""}`}
+                  className={`size-[18px] border border-[rgba(31,26,20,0.14)] bg-bg-elevated${selectedColor === TRANSPARENT_PIXEL_VALUE ? " transparent-swatch" : ""}`}
                   style={selectedColorHex ? { backgroundColor: selectedColorHex } : undefined}
                 />
                 <Palette size={18} weight="bold" />
@@ -1420,19 +1414,23 @@ export function CanvasEditor({
               </button>
 
               {openPopover === "palette" ? (
-                <div className="canvas-mobile-toolbar__popover" role="dialog">
-                  <div className="canvas-mobile-popover">
+                <div
+                  className="absolute bottom-full left-0 z-24 mb-3 w-[min(320px,calc(100vw-24px))]"
+                  role="dialog"
+                >
+                  <div className="relative grid gap-4 border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
                     {renderPaletteContent()}
+                    <div className="absolute -bottom-2 left-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
                   </div>
                 </div>
               ) : null}
             </div>
 
-            <div className="canvas-mobile-toolbar__item canvas-mobile-toolbar__item--align-end">
+            <div className="relative">
               <button
                 aria-expanded={openPopover === "info"}
                 aria-haspopup="dialog"
-                className="canvas-mobile-toolbar__button"
+                className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 border border-border bg-bg-elevated px-3.5 text-fg shadow-[var(--shadow-elevated)]"
                 onClick={() => togglePopover("info")}
                 type="button"
               >
@@ -1441,18 +1439,22 @@ export function CanvasEditor({
               </button>
 
               {openPopover === "info" ? (
-                <div className="canvas-mobile-toolbar__popover" role="dialog">
-                  <div className="canvas-mobile-popover">
+                <div
+                  className="absolute right-0 bottom-full z-24 mb-3 w-[min(320px,calc(100vw-24px))]"
+                  role="dialog"
+                >
+                  <div className="relative grid gap-4 border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
                     {renderInfoContent()}
+                    <div className="absolute -bottom-2 right-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
                   </div>
                 </div>
               ) : null}
             </div>
           </div>
 
-          <div className="canvas-mobile__paint">
+          <div style={{ paddingBottom: "max(0px, env(safe-area-inset-bottom))" }}>
             <button
-              className={`canvas-paint-button${paintButtonPressed ? " is-active" : ""}`}
+              className={`min-h-[58px] w-full border border-[rgba(111,45,26,0.16)] text-[1.05rem] font-black tracking-[0.08em] text-[#fff8f2] shadow-[0_18px_32px_rgba(143,56,31,0.24)] transition${paintButtonPressed ? " translate-y-px shadow-[0_10px_18px_rgba(143,56,31,0.22)]" : ""}`}
               onClick={() => {
                 if (ignoreNextPaintClickRef.current) {
                   ignoreNextPaintClickRef.current = false;
@@ -1465,6 +1467,10 @@ export function CanvasEditor({
               onPointerCancel={handlePaintButtonPointerUp}
               onPointerDown={handlePaintButtonPointerDown}
               onPointerUp={handlePaintButtonPointerUp}
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(218, 111, 64, 0.98), rgba(176, 72, 41, 0.98))",
+              }}
               type="button"
             >
               PAINT
@@ -1472,17 +1478,17 @@ export function CanvasEditor({
           </div>
         </div>
       ) : (
-        <div className="canvas-editor__desktop">
-          <aside className="canvas-sidebar canvas-sidebar--left">
-            <div className="canvas-panel canvas-panel--grow">
+        <div className="grid min-h-0 gap-[18px] max-[1200px]:grid-cols-[280px_minmax(0,1fr)_240px] max-[960px]:grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_280px]">
+          <aside className="grid min-h-0 gap-3.5">
+            <div className="grid min-h-0 content-start gap-4 overflow-auto border border-border bg-bg-elevated p-5 shadow-[var(--shadow-elevated)]">
               {renderPaletteContent()}
             </div>
           </aside>
 
           {renderStage()}
 
-          <aside className="canvas-sidebar canvas-sidebar--right">
-            <div className="canvas-panel">
+          <aside className="grid min-h-0 gap-3.5">
+            <div className="grid min-h-0 content-start gap-4 border border-border bg-bg-elevated p-5 shadow-[var(--shadow-elevated)]">
               <div className="stack-sm">
                 <div className="step-badge">View</div>
                 <h2 className="section-title" style={{ fontSize: "1.15rem" }}>
@@ -1491,7 +1497,7 @@ export function CanvasEditor({
               </div>
 
               <div
-                className={`canvas-minimap${viewportFrame.enabled ? " is-active" : ""}`}
+                className={viewportFrame.enabled ? "relative overflow-hidden border border-border bg-[#fff8f0] cursor-grab" : "relative overflow-hidden border border-border bg-[#fff8f0] cursor-default"}
                 onPointerDown={(event) => {
                   if (!viewportFrame.enabled) {
                     return;
@@ -1516,21 +1522,23 @@ export function CanvasEditor({
                 ref={minimapFrameRef}
                 style={{
                   aspectRatio: `${initialSnapshot.width} / ${initialSnapshot.height}`,
+                  background:
+                    "linear-gradient(135deg, var(--color-bg-elevated), rgba(245, 236, 220, 0.94)), #fff8f0",
                 }}
               >
                 <div
-                  className="canvas-minimap__reference"
+                  className="absolute inset-0 z-0 bg-center bg-cover bg-no-repeat opacity-[0.18] pointer-events-none"
                   style={referenceBackgroundStyle}
                 />
                 <canvas
-                  className="canvas-minimap__canvas"
+                  className="relative z-[1] block h-full w-full [image-rendering:pixelated]"
                   height={initialSnapshot.height}
                   ref={minimapCanvasRef}
                   width={initialSnapshot.width}
                 />
                 {viewportFrame.enabled ? (
                   <div
-                    className="canvas-minimap__viewport"
+                    className="pointer-events-none absolute z-[2] min-h-3 min-w-3 border-2 border-primary-active shadow-[0_0_0_9999px_rgba(255,255,255,0.08)]"
                     style={{
                       left: `${viewportFrame.left}%`,
                       top: `${viewportFrame.top}%`,
@@ -1541,7 +1549,7 @@ export function CanvasEditor({
                 ) : null}
               </div>
 
-              <div className="canvas-view-controls">
+              <div className="grid gap-2.5">
                 <div className="tag">{Math.round(zoom * 100)}%</div>
                 <p className="section-copy">
                   {viewportFrame.enabled
@@ -1551,7 +1559,7 @@ export function CanvasEditor({
               </div>
             </div>
 
-            <div className="canvas-panel canvas-panel--grow">
+            <div className="grid min-h-0 content-start gap-4 overflow-auto border border-border bg-bg-elevated p-5 shadow-[var(--shadow-elevated)]">
               {renderInfoContent()}
             </div>
           </aside>
