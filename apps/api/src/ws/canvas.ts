@@ -22,6 +22,10 @@ type CanvasWebSocket = WebSocket & {
 
 const canvasConnections = new Map<string, Set<WebSocket>>();
 
+export function getCanvasActiveConnectionCount(canvasId: string) {
+  return canvasConnections.get(canvasId)?.size ?? 0;
+}
+
 function broadcastToCanvasClients(canvasId: string, message: string) {
   const connections = canvasConnections.get(canvasId);
   if (connections) {

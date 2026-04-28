@@ -10,6 +10,7 @@ import {
   type WallDetail,
 } from '@street-art/shared';
 import { Spinner } from '../../../components/Spinner';
+import { buildFocusedWallMapHref } from '../../../lib/walls';
 
 const ARScene = dynamic(() => import('../../../components/ar/ARScene'), { ssr: false });
 
@@ -109,7 +110,7 @@ export default function WallARPage() {
       <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-bg-inverse px-6 text-center">
         <p className="m-0 text-danger">{error}</p>
         <button
-          onClick={() => router.push(`/walls/${wallId}`)}
+          onClick={() => router.push(buildFocusedWallMapHref(wallId))}
           className="inline-flex min-h-11 items-center justify-center rounded-lg bg-secondary px-6 text-secondary-fg"
         >
           壁の詳細へ戻る
@@ -133,7 +134,7 @@ export default function WallARPage() {
     <div className="fixed inset-0 z-[100] overflow-hidden bg-bg-inverse">
       <div className="fixed top-4 left-4 z-[110]">
         <button
-          onClick={() => { window.location.href = `/walls/${wallId}`; }}
+          onClick={() => { window.location.href = buildFocusedWallMapHref(wallId); }}
           className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/20 bg-[rgba(20,17,14,0.62)] px-4 text-sm text-fg-inverse backdrop-blur-sm"
         >
           ← 戻る

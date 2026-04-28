@@ -7,6 +7,7 @@ import { createBlankPixelData } from "../canvas/service.js";
 import { canvases, walls } from "../db/schema.js";
 import { db } from "../lib/db.js";
 import { uploadWallImagesToR2 } from "../lib/s3.js";
+import { getCanvasActiveConnectionCount } from "../ws/canvas.js";
 
 function parseCornerCoordinates(value: unknown) {
   if (typeof value === "string") {
@@ -287,7 +288,12 @@ wallsApp.get("/:id", async (c) => {
     createdAt: row.createdAt,
     displayAddress: row.displayAddress,
     photoUrl: row.thumbnailImageUrl,
-    canvas: canvasRow ?? null,
+    canvas: canvasRow
+      ? {
+          ...canvasRow,
+          activeConnectionCount: getCanvasActiveConnectionCount(canvasRow.id),
+        }
+      : null,
   };
   return c.json(responseData);
 });
@@ -404,7 +410,10 @@ wallsApp.post("/", async (c) => {
       {
         ...created.newWall,
         photoUrl: created.newWall.thumbnailImageUrl,
-        canvas: created.newCanvas,
+        canvas: {
+          ...created.newCanvas,
+          activeConnectionCount: 0,
+        },
         message: "Wall created successfully",
       },
       201,

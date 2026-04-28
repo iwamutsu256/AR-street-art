@@ -40,6 +40,7 @@ import {
 } from "../../lib/wall-image";
 import {
   CANVAS_MIN_SIZE,
+  buildFocusedWallMapHref,
   clamp,
   formatCoordinate,
   getCanvasDimensions,
@@ -1672,15 +1673,15 @@ export function NewWallRegistrationForm({
                 {success.canvas?.height}px
               </div>
               <div className="mono">Wall ID: {success.id}</div>
-              <div className="inline-actions">
+              <div className="flex gap-4">
                 <Link
                   className="button button-primary"
-                  href={`/walls/${success.id}`}
+                  href={buildFocusedWallMapHref(success.id)}
                 >
                   壁詳細へ
                 </Link>
-                <Link className="button button-secondary" href="/walls/new">
-                  登録方法選択へ戻る
+                <Link className="button button-secondary" href="/">
+                  ホームへ
                 </Link>
               </div>
             </div>

@@ -7,6 +7,8 @@ import maplibregl from "maplibre-gl";
 import type { WallDetail, WallSummary } from "@street-art/shared";
 import { formatCoordinate } from "../../lib/walls";
 import {
+  FrameCornersIcon,
+  UsersIcon,
   PaintBrushBroadIcon,
   CubeFocusIcon,
   CaretRightIcon,
@@ -240,10 +242,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
       }
 
       const element = createWallMarkerElement(wall);
-      toggleWallMarkerSelected(
-        element,
-        selectedWallIdRef.current === wall.id,
-      );
+      toggleWallMarkerSelected(element, selectedWallIdRef.current === wall.id);
       element.addEventListener("click", (event) => {
         event.stopPropagation();
         void fetchWallDetail(wall);
@@ -472,7 +471,11 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
       return;
     }
 
-    if (!mapReady || !wallsLoaded || appliedFocusWallIdRef.current === focusWallId) {
+    if (
+      !mapReady ||
+      !wallsLoaded ||
+      appliedFocusWallIdRef.current === focusWallId
+    ) {
       return;
     }
 
@@ -485,7 +488,10 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
     appliedFocusWallIdRef.current = focusWallId;
     mapRef.current?.flyTo({
       center: [targetWall.longitude, targetWall.latitude],
-      zoom: Math.max(mapRef.current?.getZoom() ?? INITIAL_REGION_ZOOM, FOCUSED_WALL_ZOOM),
+      zoom: Math.max(
+        mapRef.current?.getZoom() ?? INITIAL_REGION_ZOOM,
+        FOCUSED_WALL_ZOOM,
+      ),
     });
     void fetchWallDetail(targetWall);
   }, [focusWallId, mapReady, wallsLoaded]);
@@ -509,6 +515,9 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
   const selectedCanvas = selectedDetail?.canvas ?? null;
   const selectedWallName = selectedDetail?.name ?? selectedSummary?.name ?? "";
   const selectedWallId = selectedDetail?.id ?? selectedSummary?.id ?? null;
+  const selectedWallAddress =
+    selectedDetail?.displayAddress ?? selectedSummary?.displayAddress ?? null;
+  const activeConnectionCount = selectedCanvas?.activeConnectionCount ?? 0;
 
   if (!mapTilerKey) {
     return (
@@ -576,9 +585,14 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
         {selectedSummary ? (
           <div className="relative rounded-t-[22px] border border-border bg-bg-elevated p-4 shadow-[0_18px_48px_rgba(31,26,20,0.2)] backdrop-blur-[14px]">
             <div className="mb-3 flex justify-between gap-3">
-              <h2 className="text-2xl font-bold truncate">
-                {selectedWallName}
-              </h2>
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-2xl font-bold">
+                  {selectedWallName}
+                </h2>
+                <p className="m-0 truncate text-sm leading-6 text-fg-muted">
+                  {selectedWallAddress ?? "住所未登録"}
+                </p>
+              </div>
               <button
                 aria-label="詳細を閉じる"
                 className="grid h-[34px] w-[34px] place-items-center rounded-full border border-border bg-bg-elevated transition hover:-translate-y-px hover:border-border-strong hover:bg-white focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-white"
@@ -593,8 +607,8 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
               </button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="aspect-square max-w-[13rem] overflow-hidden rounded-lg bg-bg-muted">
+            <div className="grid gap-4 grid-cols-2">
+              <div className="aspect-square max-w-52 overflow-hidden rounded-lg bg-bg-muted">
                 {detailImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -609,19 +623,21 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
                 )}
               </div>
               <div className="flex flex-col justify-between">
-                <div className="grid gap-2 text-sm leading-6 text-fg-muted">
-                  <p className="m-0">
-                    {selectedCanvas
-                      ? `${selectedCanvas.width} x ${selectedCanvas.height}px`
-                      : detailStatus === "loading"
-                        ? "Canvas 読込中"
-                        : "Canvas 未設定"}
-                  </p>
-                  <p className="m-0">
-                    {selectedCanvas
-                      ? `${selectedCanvas.activeConnectionCount} 人が接続中`
-                      : "0 人が接続中"}
-                  </p>
+                <div className="grid text-fg-muted">
+                  <div className="flex items-center gap-2 py-2">
+                    <FrameCornersIcon size={20} />
+                    <p className="m-0">
+                      {selectedCanvas
+                        ? `${selectedCanvas.width} x ${selectedCanvas.height}px`
+                        : detailStatus === "loading"
+                          ? "Canvas 読込中"
+                          : "Canvas 未設定"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 py-2">
+                    <UsersIcon size={20} />
+                    <p className="m-0">{activeConnectionCount} 人が接続中</p>
+                  </div>
                 </div>
                 {detailStatus === "error" ? (
                   <div className="text-sm text-danger">

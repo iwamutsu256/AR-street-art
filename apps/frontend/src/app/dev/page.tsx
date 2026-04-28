@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
 import { getHealth, getWalls } from "../../lib/api";
+import { buildFocusedWallMapHref } from "../../lib/walls";
 
 export default async function Home() {
   const [health, walls] = await Promise.all([getHealth(), getWalls()]);
@@ -108,7 +109,7 @@ export default async function Home() {
                   <div className="inline-actions mt-4">
                     <Link
                       className="button button-secondary"
-                      href={`/walls/${wall.id}`}
+                      href={buildFocusedWallMapHref(wall.id)}
                     >
                       詳細を見る
                     </Link>

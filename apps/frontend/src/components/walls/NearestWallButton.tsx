@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPinArea } from '@phosphor-icons/react';
+import { buildFocusedWallMapHref } from '../../lib/walls';
 
 type NearestWall = {
   id: string;
@@ -59,7 +60,7 @@ export function NearestWallButton() {
         return;
       }
 
-      router.push(`/walls/${wall.id}`);
+      router.push(buildFocusedWallMapHref(wall.id));
     } catch (error) {
       if (isGeolocationError(error) && error.code === 1) {
         setStatus('位置情報の許可が必要です。');

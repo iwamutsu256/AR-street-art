@@ -59,6 +59,10 @@ export function formatCoordinate(value: number) {
   return value.toFixed(6);
 }
 
+export function buildFocusedWallMapHref(wallId: string) {
+  return `/?focusWallId=${encodeURIComponent(wallId)}`;
+}
+
 export function serializeCornerCoordinates(corners: CornerCoordinate[]) {
   return corners.map(({ x, y }) => ({
     x: Math.round(x),
