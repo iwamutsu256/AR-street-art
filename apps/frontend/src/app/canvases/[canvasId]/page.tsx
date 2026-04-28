@@ -1,7 +1,7 @@
-import { notFound } from 'next/navigation';
-import type { Metadata } from 'next';
-import { CanvasEditor } from '../../../components/canvas/CanvasEditor';
-import { getCanvasSnapshot, getWall } from '../../../lib/api';
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { CanvasEditor } from "../../../components/canvas/CanvasEditor";
+import { getCanvasSnapshot, getWall } from "../../../lib/api";
 
 type CanvasPageProps = {
   params: Promise<{
@@ -10,16 +10,23 @@ type CanvasPageProps = {
 };
 
 function getCanvasWsBase() {
-  return (process.env.NEXT_PUBLIC_WS_BASE ?? '/ws').trim().replace(/\/$/, '') || '/ws';
+  return (
+    (process.env.NEXT_PUBLIC_WS_BASE ?? "/ws").trim().replace(/\/$/, "") ||
+    "/ws"
+  );
 }
 
-export async function generateMetadata({ params }: CanvasPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: CanvasPageProps): Promise<Metadata> {
   const { canvasId } = await params;
   const snapshot = await getCanvasSnapshot(canvasId);
 
   return {
-    title: snapshot ? `Canvas ${canvasId} | Street Art App` : 'Canvas | Street Art App',
-    description: snapshot ? `${snapshot.width}x${snapshot.height} のリアルタイムキャンバス` : 'Street Art App のキャンバス編集画面',
+    title: snapshot ? `Canvas ${canvasId} | ARsT` : "Canvas | ARsT",
+    description: snapshot
+      ? `${snapshot.width}x${snapshot.height} のリアルタイムキャンバス`
+      : "ARsT のキャンバス編集画面",
   };
 }
 

@@ -33,7 +33,7 @@ export default function ChromeHeader() {
     <AppHeader
       leading={
         <Link className="site-header__brand" href="/">
-          Street Art App
+          ARsT
         </Link>
       }
       trailing={

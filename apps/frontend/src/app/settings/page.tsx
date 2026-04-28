@@ -1,12 +1,16 @@
-import type { Metadata } from 'next';
-import { CaretRight } from '@phosphor-icons/react/dist/ssr';
+import type { Metadata } from "next";
+import { CaretRight } from "@phosphor-icons/react/dist/ssr";
 
 export const metadata: Metadata = {
-  title: '設定 | Street Art App',
-  description: 'Street Art App の設定',
+  title: "設定 | ARsT",
+  description: "ARsT の設定",
 };
 
-const settingsLinks = ['利用規約', 'プライバシーポリシー', 'サードパーティライセンス'];
+const settingsLinks = [
+  "利用規約",
+  "プライバシーポリシー",
+  "サードパーティライセンス",
+];
 
 export default function SettingsPage() {
   return (

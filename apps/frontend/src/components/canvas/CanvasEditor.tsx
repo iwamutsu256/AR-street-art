@@ -78,13 +78,13 @@ function MobileCursorPencilIcon({ size }: { size: number }) {
         transform="rotate(45 193.747 38.8909)"
         fill="white"
         stroke="black"
-        stroke-width="5"
+        strokeWidth="5"
       />
       <path
         d="M29.289 205.313C28.05 205.834 26.8041 204.588 27.3251 203.349L47.9161 154.43C48.3294 153.448 49.6059 153.197 50.3593 153.95L78.6877 182.279C79.441 183.032 79.1904 184.309 78.2085 184.722L29.289 205.313Z"
         fill="white"
         stroke="black"
-        stroke-width="5"
+        strokeWidth="5"
       />
       <rect
         x="176.07"
@@ -94,7 +94,7 @@ function MobileCursorPencilIcon({ size }: { size: number }) {
         transform="rotate(45 176.07 24.7488)"
         fill="white"
         stroke="black"
-        stroke-width="5"
+        strokeWidth="5"
       />
       <circle
         cx="33.9411"

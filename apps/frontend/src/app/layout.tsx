@@ -1,14 +1,13 @@
-import type { Metadata } from 'next';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import './globals.css';
-import BottomNavigation from '../components/BottomNavigation';
-import ChromeHeader from '../components/ChromeHeader';
-import NearbyWallBanner from '../components/NearbyWallBanner';
-
+import type { Metadata } from "next";
+import "maplibre-gl/dist/maplibre-gl.css";
+import "./globals.css";
+import BottomNavigation from "../components/BottomNavigation";
+import ChromeHeader from "../components/ChromeHeader";
+import NearbyWallBanner from "../components/NearbyWallBanner";
 
 export const metadata: Metadata = {
-  title: 'Street Art App',
-  description: 'Online street art canvas prototype',
+  title: "ARsT",
+  description: "Online street art canvas prototype",
 };
 
 export default function RootLayout({
@@ -24,7 +23,6 @@ export default function RootLayout({
 
         <NearbyWallBanner />
         <BottomNavigation />
-        
       </body>
     </html>
   );

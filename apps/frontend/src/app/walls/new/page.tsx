@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "カベを追加 | Street Art App",
-  description: "Street Art App の壁登録方法を選択",
+  title: "カベを追加 | ARsT",
+  description: "ARsT の壁登録方法を選択",
 };
 
 type NewWallPageProps = {

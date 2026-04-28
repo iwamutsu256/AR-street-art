@@ -13,7 +13,7 @@ export default async function Home() {
           aria-hidden="true"
           className="pointer-events-none absolute -bottom-28 -right-16 h-60 w-60 rounded-full bg-primary/10 blur-[6px]"
         />
-        <div className="page-kicker">Street Art App</div>
+        <div className="page-kicker">ARsT</div>
         <h1 className="max-w-[720px] text-[clamp(2rem,5vw,4.25rem)] leading-none font-black">
           街の壁を登録して、オンラインキャンバスの入口をつくる。
         </h1>

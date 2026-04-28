@@ -3,8 +3,8 @@ import { Suspense } from "react";
 import { WallMap } from "../components/walls/WallMap";
 
 export const metadata: Metadata = {
-  title: "壁マップ | Street Art App",
-  description: "Street Art App の壁マップ",
+  title: "壁マップ | ARsT",
+  description: "ARsT の壁マップ",
 };
 
 export default function MapPage() {

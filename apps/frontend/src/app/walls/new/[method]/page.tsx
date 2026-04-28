@@ -9,8 +9,8 @@ type NewWallFlowPageProps = {
 };
 
 export const metadata: Metadata = {
-  title: "新規壁登録 | Street Art App",
-  description: "Street Art App の壁登録フロー",
+  title: "新規壁登録 | ARsT",
+  description: "ARsT の壁登録フロー",
 };
 
 export default async function NewWallFlowPage({

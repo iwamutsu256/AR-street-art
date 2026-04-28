@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "キャンバスサイズガイド | Street Art App",
+  title: "キャンバスサイズガイド | ARsT",
   description: "壁登録時に使うキャンバスサイズの目安",
 };
 
