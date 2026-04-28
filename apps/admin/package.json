@@ -1,0 +1,23 @@
+{
+  "name": "@street-art/admin",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev -p 3002",
+    "dev:docker": "next dev --webpack --hostname 0.0.0.0 --port 3002",
+    "build": "NODE_ENV=production next build",
+    "start": "next start -p 3002",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^16.2.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "typescript": "^5.9.2"
+  }
+}

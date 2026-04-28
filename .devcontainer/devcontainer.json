@@ -1,0 +1,20 @@
+{
+  "name": "street-art-workspace",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "bradlc.vscode-tailwindcss",
+        "openai.chatgpt"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "NODE_ENV": "development"
+  }
+}
