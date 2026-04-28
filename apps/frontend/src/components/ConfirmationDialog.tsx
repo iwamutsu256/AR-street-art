@@ -54,7 +54,7 @@ export function ConfirmationDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[120] grid place-items-center bg-[rgba(31,26,20,0.38)] p-6 backdrop-blur-sm max-[720px]:p-4"
+      className="fixed inset-0 z-120 grid place-items-center bg-[rgba(31,26,20,0.38)] p-6 backdrop-blur-sm max-[720px]:p-4"
       onClick={onCancel}
       role="presentation"
     >
@@ -62,7 +62,7 @@ export function ConfirmationDialog({
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
-        className="grid w-full max-w-[420px] gap-5 rounded-3xl border border-border bg-bg-elevated p-6 shadow-[var(--shadow-elevated)] max-[720px]:rounded-[20px] max-[720px]:p-5"
+        className="grid w-full max-w-105 gap-5 rounded-3xl border border-border bg-bg-elevated p-6 shadow-[var(--shadow-elevated)] max-[720px]:rounded-[20px] max-[720px]:p-5"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
       >

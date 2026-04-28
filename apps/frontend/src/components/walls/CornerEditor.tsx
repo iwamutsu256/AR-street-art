@@ -181,123 +181,113 @@ export function CornerEditor({
   }
 
   return (
-    <div className="stack-md">
-      <div
-        className="overflow-hidden rounded-[22px] border border-border"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 241, 228, 0.92))",
-        }}
+    <div
+      className="relative inline-block select-none leading-none touch-none"
+      onLostPointerCapture={() => setDragState(null)}
+      onPointerCancel={(event) => {
+        if (dragState && dragState.pointerId === event.pointerId) {
+          setDragState(null);
+        }
+      }}
+      onPointerMove={(event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) {
+          return;
+        }
+
+        event.preventDefault();
+        maybeAutoScroll(event.clientY);
+        updateCorner(event.clientX, event.clientY, dragState.index);
+      }}
+      onPointerUp={(event) => {
+        if (!dragState || dragState.pointerId !== event.pointerId) {
+          return;
+        }
+
+        if (surfaceRef.current?.hasPointerCapture(event.pointerId)) {
+          surfaceRef.current.releasePointerCapture(event.pointerId);
+        }
+        setDragState(null);
+      }}
+      ref={surfaceRef}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        className="block h-auto w-auto max-h-[min(72vh,720px)] max-w-[min(100%,960px)]"
+        ref={imageRef}
+        src={imageUrl}
+        alt={imageAlt}
+        onLoad={updateImageFrame}
+      />
+      <svg
+        className="absolute inset-0 overflow-visible"
+        preserveAspectRatio="none"
+        viewBox={`0 0 ${imageWidth} ${imageHeight}`}
       >
-        <div
-          className="relative inline-block select-none leading-none [touch-action:none]"
-          onLostPointerCapture={() => setDragState(null)}
-          onPointerCancel={(event) => {
-            if (dragState && dragState.pointerId === event.pointerId) {
-              setDragState(null);
-            }
-          }}
-          onPointerMove={(event) => {
-            if (!dragState || dragState.pointerId !== event.pointerId) {
-              return;
-            }
-
-            event.preventDefault();
-            maybeAutoScroll(event.clientY);
-            updateCorner(event.clientX, event.clientY, dragState.index);
-          }}
-          onPointerUp={(event) => {
-            if (!dragState || dragState.pointerId !== event.pointerId) {
-              return;
-            }
-
-            if (surfaceRef.current?.hasPointerCapture(event.pointerId)) {
-              surfaceRef.current.releasePointerCapture(event.pointerId);
-            }
-            setDragState(null);
-          }}
-          ref={surfaceRef}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="block h-auto w-auto max-h-[min(72vh,720px)] max-w-[min(100%,960px)]"
-            ref={imageRef}
-            src={imageUrl}
-            alt={imageAlt}
-            onLoad={updateImageFrame}
-          />
-          <svg
-            className="absolute inset-0 overflow-visible"
-            preserveAspectRatio="none"
-            viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+        <polygon
+          className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
+          points={polygonPoints}
+          style={{ strokeWidth: polygonStrokeWidth }}
+        />
+        {value.map((point, index) => (
+          <g
+            key={CORNER_LABELS[index]}
+            className={`cursor-grab active:cursor-grabbing${dragState?.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              surfaceRef.current?.setPointerCapture(event.pointerId);
+              setDragState({ index, pointerId: event.pointerId });
+              updateCorner(event.clientX, event.clientY, index);
+            }}
           >
-            <polygon
-              className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
-              points={polygonPoints}
-              style={{ strokeWidth: polygonStrokeWidth }}
-            />
-            {value.map((point, index) => (
-              <g
-                key={CORNER_LABELS[index]}
-                className={`cursor-grab active:cursor-grabbing${dragState?.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  surfaceRef.current?.setPointerCapture(event.pointerId);
-                  setDragState({ index, pointerId: event.pointerId });
-                  updateCorner(event.clientX, event.clientY, index);
-                }}
-              >
-                {renderHandleCircles(point)}
-              </g>
-            ))}
-          </svg>
-          {dragState && activePoint && scopeSize > 0 ? (
+            {renderHandleCircles(point)}
+          </g>
+        ))}
+      </svg>
+      {dragState && activePoint && scopeSize > 0 ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute z-2 overflow-hidden rounded-full border-2 border-primary bg-[rgba(23,19,15,0.18)] shadow-[0_14px_28px_rgba(24,19,14,0.24)] backdrop-blur-[4px]"
+          style={{
+            width: scopeSize,
+            height: scopeSize,
+            ...getScopePlacementStyle(dragState.index),
+          }}
+        >
+          <div className="relative h-full w-full overflow-hidden rounded-full bg-[rgba(255,248,238,0.92)]">
             <div
-              aria-hidden="true"
-              className="pointer-events-none absolute z-[2] overflow-hidden rounded-full border-2 border-primary bg-[rgba(23,19,15,0.18)] shadow-[0_14px_28px_rgba(24,19,14,0.24)] backdrop-blur-[4px]"
+              className="absolute left-0 top-0 origin-top-left will-change-transform"
               style={{
-                width: scopeSize,
-                height: scopeSize,
-                ...getScopePlacementStyle(dragState.index),
+                width: imageFrame.width,
+                height: imageFrame.height,
+                transform: `translate3d(${scopeTranslateX}px, ${scopeTranslateY}px, 0) scale(${SCOPE_ZOOM})`,
               }}
             >
-              <div className="relative h-full w-full overflow-hidden rounded-full bg-[rgba(255,248,238,0.92)]">
-                <div
-                  className="absolute left-0 top-0 origin-top-left will-change-transform"
-                  style={{
-                    width: imageFrame.width,
-                    height: imageFrame.height,
-                    transform: `translate3d(${scopeTranslateX}px, ${scopeTranslateY}px, 0) scale(${SCOPE_ZOOM})`,
-                  }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img alt="" className="block h-full w-full" src={imageUrl} />
-                  <svg
-                    className="absolute inset-0 overflow-visible"
-                    preserveAspectRatio="none"
-                    viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img alt="" className="block h-full w-full" src={imageUrl} />
+              <svg
+                className="absolute inset-0 overflow-visible"
+                preserveAspectRatio="none"
+                viewBox={`0 0 ${imageWidth} ${imageHeight}`}
+              >
+                <polygon
+                  className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
+                  points={polygonPoints}
+                  style={{ strokeWidth: polygonStrokeWidth }}
+                />
+                {value.map((point, index) => (
+                  <g
+                    key={`${CORNER_LABELS[index]}-scope`}
+                    className={`cursor-grab active:cursor-grabbing${dragState.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
                   >
-                    <polygon
-                      className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
-                      points={polygonPoints}
-                      style={{ strokeWidth: polygonStrokeWidth }}
-                    />
-                    {value.map((point, index) => (
-                      <g
-                        key={`${CORNER_LABELS[index]}-scope`}
-                        className={`cursor-grab active:cursor-grabbing${dragState.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
-                      >
-                        {renderHandleCircles(point)}
-                      </g>
-                    ))}
-                  </svg>
-                </div>
-              </div>
+                    {renderHandleCircles(point)}
+                  </g>
+                ))}
+              </svg>
             </div>
-          ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

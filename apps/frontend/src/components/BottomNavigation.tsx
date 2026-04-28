@@ -46,14 +46,14 @@ export default function BottomNavigation() {
   return (
     <nav
       aria-label="Mobile"
-      className="fixed inset-x-0 bottom-0 z-[80] hidden border-t border-[rgba(31,26,20,0.14)] bg-[rgba(255,253,248,0.92)] shadow-[0_-12px_32px_rgba(31,26,20,0.12)] backdrop-blur-[14px] max-[720px]:block"
+      className="fixed inset-x-0 bottom-0 z-80 hidden border-t border-[rgba(31,26,20,0.14)] bg-[rgba(255,253,248,0.92)] shadow-[0_-12px_32px_rgba(31,26,20,0.12)] backdrop-blur-[14px] max-[720px]:block"
       style={{
         minHeight: "var(--mobile-bottom-nav-height)",
         padding:
           "8px max(12px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))",
       }}
     >
-      <div className="mx-auto grid w-full max-w-[420px] grid-cols-3 gap-1.5">
+      <div className="mx-auto grid w-full max-w-105 grid-cols-3 gap-1.5">
         {items.map(({ href, label, Icon, isActive }) => {
           const active = isActive(pathname);
 

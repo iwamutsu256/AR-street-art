@@ -63,6 +63,41 @@ type AFrameGlobal = {
   registerComponent: (name: string, component: unknown) => void;
 };
 
+type ProjectionMatrixLike = ArrayLike<number>;
+
+type MindARControllerLike = {
+  getProjectionMatrix: () => ProjectionMatrixLike;
+};
+
+type AFrameCameraLike = {
+  aspect: number;
+  far: number;
+  fov: number;
+  near: number;
+  updateProjectionMatrix: () => void;
+};
+
+type AFrameCameraElementLike = Element & {
+  getObject3D?: (type: 'camera') => AFrameCameraLike | undefined;
+};
+
+type MindARImageSystemLike = {
+  container?: HTMLElement | null;
+  controller?: MindARControllerLike | null;
+  start?: () => void;
+  ui?: {
+    showLoading?: () => void;
+  };
+  video?: HTMLVideoElement | null;
+  _resize?: () => void;
+};
+
+type ASceneLike = Element & {
+  systems?: {
+    'mindar-image-system'?: MindARImageSystemLike;
+  };
+};
+
 const PIXEL_ART_COMPONENT = 'pixel-art-texture';
 const TEXTURE_FIELDS = ['map', 'alphaMap', 'emissiveMap'] as const;
 const TEXTURE_READY_EVENTS = ['loaded', 'materialloaded', 'materialtextureloaded'] as const;
@@ -146,6 +181,84 @@ function registerPixelArtTextureComponent() {
   });
 }
 
+function createContainResizeHandler(mindarSystem: MindARImageSystemLike) {
+  return () => {
+    const video = mindarSystem.video;
+    const container = mindarSystem.container;
+    const controller = mindarSystem.controller;
+
+    if (
+      !video ||
+      !container ||
+      !controller ||
+      !video.videoWidth ||
+      !video.videoHeight ||
+      !container.clientWidth ||
+      !container.clientHeight
+    ) {
+      return;
+    }
+
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const containerAspect = container.clientWidth / container.clientHeight;
+
+    if (!Number.isFinite(videoAspect) || !Number.isFinite(containerAspect)) {
+      return;
+    }
+
+    let videoWidth = 0;
+    let videoHeight = 0;
+
+    if (videoAspect > containerAspect) {
+      videoWidth = container.clientWidth;
+      videoHeight = videoWidth / videoAspect;
+    } else {
+      videoHeight = container.clientHeight;
+      videoWidth = videoHeight * videoAspect;
+    }
+
+    const projectionMatrix = controller.getProjectionMatrix();
+    const verticalFocalLength = Number(projectionMatrix[5]);
+    const matrixDepth = Number(projectionMatrix[10]);
+    const matrixOffset = Number(projectionMatrix[14]);
+
+    if (
+      !Number.isFinite(verticalFocalLength) ||
+      !Number.isFinite(matrixDepth) ||
+      !Number.isFinite(matrixOffset) ||
+      verticalFocalLength === 0 ||
+      videoHeight === 0
+    ) {
+      return;
+    }
+
+    const verticalScale = container.clientHeight / videoHeight;
+    const fov =
+      (2 * Math.atan((1 / verticalFocalLength) * verticalScale) * 180) /
+      Math.PI;
+    const near = matrixOffset / (matrixDepth - 1);
+    const far = matrixOffset / (matrixDepth + 1);
+
+    const camera = (container.querySelector('a-camera') as AFrameCameraElementLike | null)?.getObject3D?.(
+      'camera'
+    );
+
+    if (camera) {
+      camera.fov = fov;
+      camera.aspect = containerAspect;
+      camera.near = near;
+      camera.far = far;
+      camera.updateProjectionMatrix();
+    }
+
+    // MindAR defaults to cover; keep the entire camera frame centered instead.
+    video.style.top = `${(container.clientHeight - videoHeight) / 2}px`;
+    video.style.left = `${(container.clientWidth - videoWidth) / 2}px`;
+    video.style.width = `${videoWidth}px`;
+    video.style.height = `${videoHeight}px`;
+  };
+}
+
 export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>('loading');
@@ -195,7 +308,7 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
       containerRef.current.innerHTML = `
         <a-scene
-          mindar-image="imageTargetSrc: ${mindUrl}; autoStart: true; uiError: no; uiScanning: no; filterMinCF: 0.001; filterBeta: 0.001;"
+          mindar-image="imageTargetSrc: ${mindUrl}; autoStart: false; uiError: no; uiScanning: no; filterMinCF: 0.001; filterBeta: 0.001;"
           color-space="sRGB"
           renderer="colorManagement: true"
           vr-mode-ui="enabled: false"
@@ -219,6 +332,33 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
           </a-entity>
         </a-scene>
       `;
+
+      const scene = containerRef.current.querySelector('a-scene') as ASceneLike | null;
+
+      if (!scene) {
+        throw new Error('AR シーンの初期化に失敗しました');
+      }
+
+      let sceneStarted = false;
+      const startScene = () => {
+        if (sceneStarted) return;
+
+        const mindarSystem = scene.systems?.['mindar-image-system'];
+        if (
+          !mindarSystem ||
+          typeof mindarSystem.start !== 'function' ||
+          typeof mindarSystem.ui?.showLoading !== 'function'
+        ) {
+          window.requestAnimationFrame(startScene);
+          return;
+        }
+
+        mindarSystem._resize = createContainResizeHandler(mindarSystem);
+        sceneStarted = true;
+        mindarSystem.start();
+      };
+
+      window.requestAnimationFrame(startScene);
 
       const entity = containerRef.current.querySelector('[mindar-image-target]');
       entity?.addEventListener('targetFound', () => setPhase('found'));

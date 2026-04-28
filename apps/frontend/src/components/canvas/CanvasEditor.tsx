@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Info, PaletteIcon } from "@phosphor-icons/react";
+import { ArrowLeft, Info, InfoIcon, PaletteIcon } from "@phosphor-icons/react";
 import {
   useCallback,
   useEffect,
@@ -65,23 +65,44 @@ const MAX_ZOOM = 24;
 function MobileCursorPencilIcon({ size }: { size: number }) {
   return (
     <svg
-      aria-hidden="true"
-      className="block"
+      width="30"
+      height="30"
+      viewBox="25 13 195 195"
       fill="none"
-      focusable="false"
-      height={size}
-      viewBox="0 0 30 30"
-      width={size}
       xmlns="http://www.w3.org/2000/svg"
     >
-      <polygon fill="#d5a46a" points="0 30 6.1 23.9 9.2 27 3.1 30" />
-      <polygon fill="#1f1a14" points="0 30 3.2 26.8 4.8 28.4 2.4 30" />
-      <polygon
-        fill="currentColor"
-        points="6.1 23.9 20.2 9.8 24.4 14 10.3 28.1"
+      <circle
+        cx="193.747"
+        cy="38.8909"
+        r="22.5"
+        transform="rotate(45 193.747 38.8909)"
+        fill="white"
+        stroke="black"
+        stroke-width="5"
       />
-      <polygon fill="#f2e7d8" points="20.2 9.8 23.4 6.6 27.6 10.8 24.4 14" />
-      <polygon fill="#e58d8a" points="23.4 6.6 27 3 30 6 26.4 9.6" />
+      <path
+        d="M29.289 205.313C28.05 205.834 26.8041 204.588 27.3251 203.349L47.9161 154.43C48.3294 153.448 49.6059 153.197 50.3593 153.95L78.6877 182.279C79.441 183.032 79.1904 184.309 78.2085 184.722L29.289 205.313Z"
+        fill="white"
+        stroke="black"
+        stroke-width="5"
+      />
+      <rect
+        x="176.07"
+        y="24.7488"
+        width="45"
+        height="180"
+        transform="rotate(45 176.07 24.7488)"
+        fill="white"
+        stroke="black"
+        stroke-width="5"
+      />
+      <circle
+        cx="33.9411"
+        cy="198.697"
+        r="6"
+        transform="rotate(45 33.9411 198.697)"
+        fill="black"
+      />
     </svg>
   );
 }
@@ -1571,7 +1592,7 @@ export function CanvasEditor({
             width={initialSnapshot.width}
           />
           <div
-            className="pointer-events-none absolute left-0 top-0 z-[3] border border-[rgba(182,76,45,0.94)] bg-[rgba(182,76,45,0.18)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
+            className="pointer-events-none absolute left-0 top-0 z-3 border border-[rgba(182,76,45,0.94)] bg-[rgba(182,76,45,0.18)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
             style={{
               width: zoom,
               height: zoom,
@@ -1645,18 +1666,19 @@ export function CanvasEditor({
                         : undefined
                     }
                   />
-                  <PaletteIcon size={18} weight="bold" />
+                  <PaletteIcon size={24} weight="bold" />
                   <span>パレット</span>
                 </button>
 
+                {/* mobile palette popover */}
                 {openPopover === "palette" ? (
                   <div
-                    className="absolute bottom-full left-0 z-[30] mb-3 w-[min(320px,calc(100vw-24px))] select-none"
+                    className="absolute bottom-full left-0 z-30 mb-3 w-[min(320px,calc(100vw-24px))] select-none"
                     role="dialog"
                   >
-                    <div className="relative grid gap-4 select-none border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
+                    <div className="relative grid gap-4 select-none border border-border bg-bg-elevated p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
                       {renderPaletteContent(true)}
-                      <div className="absolute -bottom-2 left-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
+                      <div className="absolute -bottom-2 left-7 size-4 rotate-45 border-b border-r border-border bg-bg-elevated" />
                     </div>
                   </div>
                 ) : null}
@@ -1670,18 +1692,19 @@ export function CanvasEditor({
                   onClick={() => togglePopover("info")}
                   type="button"
                 >
-                  <Info size={18} weight="bold" />
+                  <InfoIcon size={24} weight="bold" />
                   <span>詳細</span>
                 </button>
 
+                {/* mobile info popover */}
                 {openPopover === "info" ? (
                   <div
-                    className="absolute right-0 bottom-full z-[30] mb-3 w-[min(320px,calc(100vw-24px))] select-none"
+                    className="absolute right-0 bottom-full z-30 mb-3 w-[min(320px,calc(100vw-24px))] select-none"
                     role="dialog"
                   >
-                    <div className="relative grid gap-4 select-none border border-border bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(247,239,225,0.98))] p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
+                    <div className="relative grid gap-4 select-none border border-border bg-bg-elevated p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
                       {renderInfoContent()}
-                      <div className="absolute -bottom-2 right-7 size-4 rotate-45 border-b border-r border-border bg-[rgba(247,239,225,0.98)]" />
+                      <div className="absolute -bottom-2 right-7 size-4 rotate-45 border-b border-r border-border bg-bg-elevated" />
                     </div>
                   </div>
                 ) : null}

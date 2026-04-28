@@ -1,29 +1,34 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   getPaletteIndexFromPixelValue,
   normalizePixelValue,
   type CanvasSnapshot,
   type WallDetail,
-} from '@street-art/shared';
-import { Spinner } from '../../../components/Spinner';
-import { buildFocusedWallMapHref } from '../../../lib/walls';
+} from "@street-art/shared";
+import { Spinner } from "../../../components/Spinner";
+import { buildFocusedWallMapHref } from "../../../lib/walls";
 
-const ARScene = dynamic(() => import('../../../components/ar/ARScene'), { ssr: false });
+const ARScene = dynamic(() => import("../../../components/ar/ARScene"), {
+  ssr: false,
+});
 
 function renderCanvasToDataUrl(snapshot: CanvasSnapshot): string {
-  const canvas = document.createElement('canvas');
+  const canvas = document.createElement("canvas");
   canvas.width = snapshot.width;
   canvas.height = snapshot.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
   const imageData = ctx.createImageData(snapshot.width, snapshot.height);
   const bytes = Uint8Array.from(atob(snapshot.pixels), (c) => c.charCodeAt(0));
   for (let i = 0; i < bytes.length; i++) {
-    const pixelValue = normalizePixelValue(bytes[i] ?? 0, snapshot.palette.length);
+    const pixelValue = normalizePixelValue(
+      bytes[i] ?? 0,
+      snapshot.palette.length,
+    );
     const paletteIndex = getPaletteIndexFromPixelValue(pixelValue);
     const offset = i * 4;
 
@@ -44,7 +49,7 @@ function renderCanvasToDataUrl(snapshot: CanvasSnapshot): string {
     imageData.data[offset + 3] = 255;
   }
   ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL('image/png');
+  return canvas.toDataURL("image/png");
 }
 
 type ARData = {
@@ -59,26 +64,27 @@ export default function WallARPage() {
   const wallId = params.id as string;
 
   const [arData, setArData] = useState<ARData | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
         const wallRes = await fetch(`/api/walls/${wallId}`);
-        if (!wallRes.ok) throw new Error('壁の取得に失敗しました');
+        if (!wallRes.ok) throw new Error("壁の取得に失敗しました");
         const wall: WallDetail = await wallRes.json();
 
-        if (!wall.rectifiedImageUrl) throw new Error('この壁には rectified 画像がありません');
+        if (!wall.rectifiedImageUrl)
+          throw new Error("この壁には rectified 画像がありません");
 
         const proxied = (url: string) =>
-          url.startsWith('blob:') || url.startsWith('data:')
+          url.startsWith("blob:") || url.startsWith("data:")
             ? url
             : `/api/proxy-image?url=${encodeURIComponent(url)}`;
 
         const img = await new Promise<HTMLImageElement>((resolve, reject) => {
           const el = new Image();
           el.onload = () => resolve(el);
-          el.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+          el.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
           el.src = proxied(wall.rectifiedImageUrl!);
         });
         const aspectRatio = img.naturalWidth / img.naturalHeight;
@@ -96,7 +102,11 @@ export default function WallARPage() {
           artworkUrl = wall.thumbnailImageUrl ?? wall.rectifiedImageUrl!;
         }
 
-        setArData({ rectifiedUrl: wall.rectifiedImageUrl!, artworkUrl, aspectRatio });
+        setArData({
+          rectifiedUrl: wall.rectifiedImageUrl!,
+          artworkUrl,
+          aspectRatio,
+        });
       } catch (e) {
         setError((e as Error).message);
       }
@@ -107,7 +117,7 @@ export default function WallARPage() {
 
   if (error) {
     return (
-      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-bg-inverse px-6 text-center">
+      <div className="fixed inset-0 z-100 flex flex-col items-center justify-center gap-4 bg-bg-inverse px-6 text-center">
         <p className="m-0 text-danger">{error}</p>
         <button
           onClick={() => router.push(buildFocusedWallMapHref(wallId))}
@@ -121,7 +131,7 @@ export default function WallARPage() {
 
   if (!arData) {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-bg-inverse">
+      <div className="fixed inset-0 z-100 flex items-center justify-center bg-bg-inverse">
         <div className="grid gap-3 text-center text-fg-inverse">
           <Spinner tone="inverse" />
           <p className="m-0 text-sm">AR を準備中...</p>
@@ -131,10 +141,12 @@ export default function WallARPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden bg-bg-inverse">
-      <div className="fixed top-4 left-4 z-[110]">
+    <div className="fixed inset-0 z-100 overflow-hidden bg-bg-inverse">
+      <div className="fixed top-4 left-4 z-110">
         <button
-          onClick={() => { window.location.href = buildFocusedWallMapHref(wallId); }}
+          onClick={() => {
+            window.location.href = buildFocusedWallMapHref(wallId);
+          }}
           className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/20 bg-[rgba(20,17,14,0.62)] px-4 text-sm text-fg-inverse backdrop-blur-sm"
         >
           ← 戻る

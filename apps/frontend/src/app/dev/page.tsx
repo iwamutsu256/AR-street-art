@@ -8,13 +8,7 @@ export default async function Home() {
 
   return (
     <main className="page-shell">
-      <section
-        className="relative mb-6 overflow-hidden border border-border p-9 shadow-[var(--shadow-elevated)] max-[720px]:p-5"
-        style={{
-          background:
-            "radial-gradient(circle at top right, rgba(255, 207, 123, 0.44), transparent 26%), linear-gradient(135deg, var(--color-bg-muted), rgba(255, 245, 228, 0.94))",
-        }}
-      >
+      <section className="relative mb-6 overflow-hidden border border-border p-9 max-[720px]:p-5 bg-bg">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -bottom-28 -right-16 h-60 w-60 rounded-full bg-primary/10 blur-[6px]"

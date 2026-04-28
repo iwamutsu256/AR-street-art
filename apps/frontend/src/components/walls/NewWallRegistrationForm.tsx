@@ -1158,7 +1158,7 @@ export function NewWallRegistrationForm({
       </div>
       <div className="flex items-center justify-center w-full relative">
         {isUploadProcessing ? (
-          <div className="absolute inset-0 z-[60] grid place-items-center rounded-lg bg-[rgba(255,250,241,0.94)] p-6 backdrop-blur-[6px]">
+          <div className="absolute inset-0 z-60 grid place-items-center rounded-lg bg-[rgba(255,250,241,0.94)] p-6 backdrop-blur-[6px]">
             <div className="text-center">
               <Spinner label={uploadPhase ?? undefined} size="lg" />
             </div>
