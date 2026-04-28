@@ -16,10 +16,26 @@ const navItems = [
   },
   {
     href: "/walls/new",
-    label: "カベを追加",
+    label: "壁を追加",
     primary: true,
   },
 ];
+
+function getChromeTitle(pathname: string) {
+  if (pathname === "/") {
+    return "マップ";
+  }
+
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+    return "設定";
+  }
+
+  if (pathname === "/walls/new" || pathname.startsWith("/walls/new/")) {
+    return "壁を追加";
+  }
+
+  return "ARsT";
+}
 
 export default function ChromeHeader() {
   const pathname = usePathname();
@@ -31,10 +47,10 @@ export default function ChromeHeader() {
 
   return (
     <AppHeader
-      leading={
-        <Link className="site-header__brand" href="/">
-          ARsT
-        </Link>
+      title={
+        <div className="site-header__title text-xl">
+          {getChromeTitle(pathname)}
+        </div>
       }
       trailing={
         <nav className="site-header__nav" aria-label="Global">

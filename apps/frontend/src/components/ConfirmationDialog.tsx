@@ -54,7 +54,7 @@ export function ConfirmationDialog({
 
   return (
     <div
-      className="fixed inset-0 z-120 grid place-items-center bg-[rgba(31,26,20,0.38)] p-6 backdrop-blur-sm max-[720px]:p-4"
+      className="fixed inset-0 z-120 grid place-items-center bg-overlay p-6 backdrop-blur-sm max-[720px]:p-4"
       onClick={onCancel}
       role="presentation"
     >

@@ -1448,10 +1448,10 @@ export function CanvasEditor({
       ? "grid grid-cols-6 gap-1.5 select-none"
       : "grid grid-cols-4 select-none";
     const selectedSwatchShadow =
-      "inset 0 0 0 2px var(--color-selected), inset 0 0 0 4px #fff";
+      "inset 0 0 0 2px var(--color-primary-active), inset 0 0 0 4px var(--color-bg-elevated)";
     const swatchClassName = compact
-      ? "relative aspect-square w-full cursor-pointer select-none border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)]"
-      : "relative min-h-12 cursor-pointer select-none border-0 shadow-[inset_0_0_0_1px_rgba(31,26,20,0.12)] hover:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:shadow-[inset_0_0_0_2px_rgba(31,26,20,0.64)] focus-visible:outline-none";
+      ? "relative aspect-square w-full cursor-pointer select-none border-0 shadow-[var(--shadow-outline)]"
+      : "relative min-h-12 cursor-pointer select-none border-0 shadow-[var(--shadow-outline)] hover:shadow-[var(--shadow-outline-strong)] focus-visible:shadow-[var(--shadow-outline-strong)] focus-visible:outline-none";
 
     return (
       <>
@@ -1519,11 +1519,11 @@ export function CanvasEditor({
   function renderStage() {
     return (
       <div
-        className={`relative h-full min-h-0 select-none overflow-hidden bg-gray-400 ${stageIsPannable ? " cursor-grab" : " cursor-crosshair"}`}
+        className={`relative h-full min-h-0 select-none overflow-hidden bg-border-muted ${stageIsPannable ? " cursor-grab" : " cursor-crosshair"}`}
         ref={stageRef}
       >
         <div
-          className="absolute block select-none overflow-hidden bg-[#fff8f0] shadow-[0_28px_60px_rgba(50,33,15,0.16)]"
+          className="absolute block select-none overflow-hidden bg-bg shadow-[var(--shadow-canvas)]"
           style={{
             left: surfaceFrame.left,
             top: surfaceFrame.top,
@@ -1559,7 +1559,7 @@ export function CanvasEditor({
                     d="M 1 0 L 0 0 0 1"
                     fill="none"
                     shapeRendering="crispEdges"
-                    stroke="rgba(31, 26, 20, 0.16)"
+                    stroke="var(--color-border-strong)"
                     strokeWidth={1}
                     vectorEffect="non-scaling-stroke"
                   />
@@ -1592,7 +1592,7 @@ export function CanvasEditor({
             width={initialSnapshot.width}
           />
           <div
-            className="pointer-events-none absolute left-0 top-0 z-3 border border-[rgba(182,76,45,0.94)] bg-[rgba(182,76,45,0.18)] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
+            className="pointer-events-none absolute left-0 top-0 z-3 border border-primary/90 bg-primary/18 shadow-[var(--shadow-selection-frame)]"
             style={{
               width: zoom,
               height: zoom,
@@ -1603,7 +1603,7 @@ export function CanvasEditor({
         {mobileCursorBadgePosition ? (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute z-4 select-none text-primary leading-0 drop-shadow-[0_6px_12px_rgba(65,38,13,0.18)]"
+            className="pointer-events-none absolute z-4 select-none text-primary leading-0 drop-shadow-[var(--drop-shadow-cursor)]"
             style={{
               left: mobileCursorBadgePosition.x,
               top: mobileCursorBadgePosition.y,
@@ -1619,7 +1619,7 @@ export function CanvasEditor({
 
   return (
     <section
-      className={`h-full${isMobileLayout ? " overflow-y-auto select-none" : ""}`}
+      className={`flex h-full min-h-0 flex-col${isMobileLayout ? " select-none" : ""}`}
       ref={editorRef}
     >
       <AppHeader
@@ -1640,7 +1640,7 @@ export function CanvasEditor({
       />
 
       {isMobileLayout ? (
-        <div className="grid min-h-0 select-none content-start gap-3 pb-4">
+        <div className="grid min-h-0 flex-1 select-none content-around gap-3 overflow-y-auto pb-4">
           <div className="grid min-h-0 w-full select-none aspect-square self-start">
             {renderStage()}
           </div>
@@ -1659,7 +1659,7 @@ export function CanvasEditor({
                   type="button"
                 >
                   <span
-                    className={`size-4 border border-[rgba(31,26,20,0.14)] bg-bg-elevated${selectedColor === TRANSPARENT_PIXEL_VALUE ? " transparent-swatch" : ""}`}
+                    className={`size-4 border border-border bg-bg-elevated${selectedColor === TRANSPARENT_PIXEL_VALUE ? " transparent-swatch" : ""}`}
                     style={
                       selectedColorHex
                         ? { backgroundColor: selectedColorHex }
@@ -1676,7 +1676,7 @@ export function CanvasEditor({
                     className="absolute bottom-full left-0 z-30 mb-3 w-[min(320px,calc(100vw-24px))] select-none"
                     role="dialog"
                   >
-                    <div className="relative grid gap-4 select-none border border-border bg-bg-elevated p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
+                    <div className="relative grid gap-4 select-none border border-border bg-bg-elevated p-4 shadow-[var(--shadow-popover)]">
                       {renderPaletteContent(true)}
                       <div className="absolute -bottom-2 left-7 size-4 rotate-45 border-b border-r border-border bg-bg-elevated" />
                     </div>
@@ -1702,7 +1702,7 @@ export function CanvasEditor({
                     className="absolute right-0 bottom-full z-30 mb-3 w-[min(320px,calc(100vw-24px))] select-none"
                     role="dialog"
                   >
-                    <div className="relative grid gap-4 select-none border border-border bg-bg-elevated p-4 shadow-[0_24px_48px_rgba(31,26,20,0.18)]">
+                    <div className="relative grid gap-4 select-none border border-border bg-bg-elevated p-4 shadow-[var(--shadow-popover)]">
                       {renderInfoContent()}
                       <div className="absolute -bottom-2 right-7 size-4 rotate-45 border-b border-r border-border bg-bg-elevated" />
                     </div>
@@ -1740,7 +1740,7 @@ export function CanvasEditor({
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 gap-[18px] max-[1200px]:grid-cols-[280px_minmax(0,1fr)_240px] max-[960px]:grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_280px]">
+        <div className="grid min-h-0 flex-1 gap-[18px] max-[1200px]:grid-cols-[280px_minmax(0,1fr)_240px] max-[960px]:grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_280px]">
           <aside className="grid min-h-0 gap-3.5">
             <div className="grid min-h-0 content-start gap-4 overflow-auto border border-border bg-bg-elevated p-5 shadow-[var(--shadow-elevated)]">
               {renderPaletteContent()}
@@ -1753,8 +1753,8 @@ export function CanvasEditor({
             <div
               className={
                 viewportFrame.enabled
-                  ? "relative overflow-hidden border border-border bg-[#fff8f0] cursor-grab"
-                  : "relative overflow-hidden border border-border bg-[#fff8f0] cursor-default"
+                  ? "relative overflow-hidden border border-border bg-bg cursor-grab"
+                  : "relative overflow-hidden border border-border bg-bg cursor-default"
               }
               onPointerDown={(event) => {
                 if (!viewportFrame.enabled) {
@@ -1781,7 +1781,7 @@ export function CanvasEditor({
               style={{
                 aspectRatio: `${initialSnapshot.width} / ${initialSnapshot.height}`,
                 background:
-                  "linear-gradient(135deg, var(--color-bg-elevated), rgba(245, 236, 220, 0.94)), #fff8f0",
+                  "linear-gradient(135deg, var(--color-bg-elevated), color-mix(in srgb, var(--color-bg-muted) 94%, transparent)), var(--color-bg)",
               }}
             >
               <div
@@ -1796,7 +1796,7 @@ export function CanvasEditor({
               />
               {viewportFrame.enabled ? (
                 <div
-                  className="pointer-events-none absolute z-2 min-h-3 min-w-3 border-2 border-primary-active shadow-[0_0_0_9999px_rgba(255,255,255,0.08)]"
+                  className="pointer-events-none absolute z-2 min-h-3 min-w-3 border-2 border-primary-active shadow-[var(--shadow-viewport-mask)]"
                   style={{
                     left: `${viewportFrame.left}%`,
                     top: `${viewportFrame.top}%`,

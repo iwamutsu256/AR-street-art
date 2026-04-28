@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "カベを追加 | ARsT",
+  title: "壁を追加 | ARsT",
   description: "ARsT の壁登録方法を選択",
 };
 
@@ -41,7 +41,7 @@ export default async function NewWallPage({ searchParams }: NewWallPageProps) {
               className="section-title text-2xl font-bold"
               id="new-wall-entry-title"
             >
-              カベを追加
+              壁を追加
             </h1>
             <p className="section-copy">
               カメラで壁面をスキャンするか、手元の画像をアップロードして登録します。

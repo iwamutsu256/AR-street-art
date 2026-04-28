@@ -172,7 +172,8 @@ export function CornerEditor({
           cx={point.x}
           cy={point.y}
           r={handleRadius}
-          fill="rgba(255, 255, 255, 0.4)"
+          fill="var(--color-bg-elevated)"
+          fillOpacity={0.4}
           stroke="var(--color-primary)"
           strokeWidth={handleStrokeWidth}
         />
@@ -224,14 +225,14 @@ export function CornerEditor({
         viewBox={`0 0 ${imageWidth} ${imageHeight}`}
       >
         <polygon
-          className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
+          className="fill-transparent stroke-primary/90 [stroke-linejoin:round]"
           points={polygonPoints}
           style={{ strokeWidth: polygonStrokeWidth }}
         />
         {value.map((point, index) => (
           <g
             key={CORNER_LABELS[index]}
-            className={`cursor-grab active:cursor-grabbing${dragState?.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
+            className={`cursor-grab active:cursor-grabbing${dragState?.index === index ? " drop-shadow-[var(--drop-shadow-primary)]" : ""}`}
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -247,14 +248,14 @@ export function CornerEditor({
       {dragState && activePoint && scopeSize > 0 ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute z-2 overflow-hidden rounded-full border-2 border-primary bg-[rgba(23,19,15,0.18)] shadow-[0_14px_28px_rgba(24,19,14,0.24)] backdrop-blur-[4px]"
+          className="pointer-events-none absolute z-2 overflow-hidden rounded-full border-2 border-primary bg-bg-inverse/18 shadow-[var(--shadow-floating)] backdrop-blur-[4px]"
           style={{
             width: scopeSize,
             height: scopeSize,
             ...getScopePlacementStyle(dragState.index),
           }}
         >
-          <div className="relative h-full w-full overflow-hidden rounded-full bg-[rgba(255,248,238,0.92)]">
+          <div className="relative h-full w-full overflow-hidden rounded-full bg-bg/92">
             <div
               className="absolute left-0 top-0 origin-top-left will-change-transform"
               style={{
@@ -271,14 +272,14 @@ export function CornerEditor({
                 viewBox={`0 0 ${imageWidth} ${imageHeight}`}
               >
                 <polygon
-                  className="fill-transparent stroke-[rgba(182,76,45,0.88)] [stroke-linejoin:round]"
+                  className="fill-transparent stroke-primary/90 [stroke-linejoin:round]"
                   points={polygonPoints}
                   style={{ strokeWidth: polygonStrokeWidth }}
                 />
                 {value.map((point, index) => (
                   <g
                     key={`${CORNER_LABELS[index]}-scope`}
-                    className={`cursor-grab active:cursor-grabbing${dragState.index === index ? " drop-shadow-[0_0_14px_rgba(182,76,45,0.34)]" : ""}`}
+                    className={`cursor-grab active:cursor-grabbing${dragState.index === index ? " drop-shadow-[var(--drop-shadow-primary)]" : ""}`}
                   >
                     {renderHandleCircles(point)}
                   </g>

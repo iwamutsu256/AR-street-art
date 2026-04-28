@@ -26,9 +26,9 @@ function MapCenterPin() {
       aria-hidden="true"
       className="pointer-events-none absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-full justify-items-center"
     >
-      <div className="h-[22px] w-[22px] rotate-[-45deg] rounded-[50%_50%_50%_0] border-[3px] border-white/95 bg-primary shadow-[0_8px_18px_rgba(31,26,20,0.18)]" />
-      <div className="-mt-0.5 h-[18px] w-[3px] rounded-full bg-[rgba(31,26,20,0.5)]" />
-      <div className="mt-1 h-2 w-[26px] rounded-full bg-[rgba(31,26,20,0.16)] blur-[1px]" />
+      <div className="h-[22px] w-[22px] rotate-[-45deg] rounded-[50%_50%_50%_0] border-[3px] border-fg-inverse/95 bg-primary shadow-[var(--shadow-marker)]" />
+      <div className="-mt-0.5 h-[18px] w-[3px] rounded-full bg-bg-inverse/50" />
+      <div className="mt-1 h-2 w-[26px] rounded-full bg-bg-inverse/16 blur-[1px]" />
     </div>
   );
 }

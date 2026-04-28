@@ -15,10 +15,10 @@ const sizeClasses: Record<SpinnerSize, string> = {
 };
 
 const toneClasses: Record<SpinnerTone, string> = {
-  neutral: "border-[rgba(108,98,85,0.22)] border-t-fg",
-  primary: "border-[rgba(182,76,45,0.24)] border-t-primary",
-  inverse: "border-[rgba(255,248,244,0.3)] border-t-fg-inverse",
-  success: "border-[rgba(22,101,52,0.3)] border-t-success",
+  neutral: "border-fg/14 border-t-fg",
+  primary: "border-primary/24 border-t-primary",
+  inverse: "border-fg-inverse/30 border-t-fg-inverse",
+  success: "border-success/30 border-t-success",
 };
 
 function joinClassNames(...classNames: Array<string | undefined>) {

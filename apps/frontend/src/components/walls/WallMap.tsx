@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { WallDetail, WallSummary } from "@street-art/shared";
 import { formatCoordinate } from "../../lib/walls";
+import { Spinner } from "../Spinner";
 import {
   FrameCornersIcon,
   UsersIcon,
@@ -45,7 +46,7 @@ const FOCUSED_WALL_ZOOM = 15;
 const WALL_MARKER_BASE_CLASS_NAME =
   "group grid h-[42px] w-9 place-items-center border-0 bg-transparent p-0";
 const WALL_MARKER_DOT_BASE_CLASS_NAME =
-  "block h-6 w-6 rotate-[-45deg] rounded-[50%_50%_50%_0] border-[3px] border-white/95 bg-primary shadow-[0_8px_20px_rgba(31,26,20,0.28)] transition duration-150 group-hover:scale-[1.12] group-hover:bg-primary-active group-focus-visible:scale-[1.12] group-focus-visible:bg-primary-active";
+  "block h-6 w-6 rotate-[-45deg] rounded-[50%_50%_50%_0] border-[3px] border-fg-inverse/95 bg-primary shadow-[var(--shadow-marker)] transition duration-150 group-hover:scale-[1.12] group-hover:bg-primary-active group-focus-visible:scale-[1.12] group-focus-visible:bg-primary-active";
 const WALL_MARKER_DOT_SELECTED_CLASS_NAME = "scale-[1.12] bg-primary-active";
 
 function toggleWallMarkerSelected(element: HTMLElement, isSelected: boolean) {
@@ -127,7 +128,7 @@ function createWallMarkerElement(wall: WallSummary) {
 function createUserLocationElement() {
   const element = document.createElement("div");
   element.className =
-    "relative block h-[18px] w-[18px] rounded-full border-[3px] border-white bg-secondary shadow-[0_8px_22px_rgba(37,99,235,0.35)] after:absolute after:inset-[-10px] after:rounded-full after:bg-[rgba(37,99,235,0.16)] after:content-['']";
+    "relative block h-[18px] w-[18px] rounded-full border-[3px] border-fg-inverse bg-location shadow-[var(--shadow-marker-location)] after:absolute after:inset-[-10px] after:rounded-full after:bg-location/16 after:content-['']";
   element.setAttribute("aria-label", "現在地");
   return element;
 }
@@ -538,31 +539,32 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
         <div className="absolute inset-0 h-full w-full" ref={containerRef} />
       ) : null}
 
-      {!initialView ? (
-        <div
-          className="absolute inset-0 z-20 grid place-items-center bg-overlay font-bold text-fg-muted"
-          role="status"
-        >
-          地図を準備中…
+      {!mapReady && !mapError ? (
+        <div className="absolute inset-0 z-20 grid place-items-center bg-overlay/25 p-6 backdrop-blur-[2px]">
+          <div className="rounded-[22px] border border-border bg-bg-elevated px-6 py-5 text-fg shadow-[var(--shadow-panel)]">
+            <Spinner label="地図を準備中..." size="lg" />
+          </div>
         </div>
       ) : null}
 
-      <div className="absolute right-[58px] top-3.5 z-30 flex gap-2 max-[720px]:right-[54px] max-[720px]:top-2.5">
-        <button
-          aria-label="現在地へ移動"
-          className="grid h-[42px] w-[42px] place-items-center rounded-full border border-border bg-bg-elevated shadow-[0_10px_28px_rgba(31,26,20,0.14)] transition hover:-translate-y-px hover:border-border-strong hover:bg-white focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-white disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={!userLocation}
-          onClick={handleFocusUserLocation}
-          title="現在地へ移動"
-          type="button"
-        >
-          <CurrentLocationIcon />
-        </button>
-      </div>
+      {mapReady ? (
+        <div className="absolute right-[58px] top-3.5 z-30 flex gap-2 max-[720px]:right-[54px] max-[720px]:top-2.5">
+          <button
+            aria-label="現在地へ移動"
+            className="grid h-[42px] w-[42px] place-items-center rounded-full border border-border bg-bg-elevated text-location shadow-[var(--shadow-button)] transition hover:-translate-y-px hover:border-border-strong hover:bg-bg hover:text-location-hover focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-bg focus-visible:text-location-hover disabled:cursor-not-allowed disabled:opacity-55"
+            disabled={!userLocation}
+            onClick={handleFocusUserLocation}
+            title="現在地へ移動"
+            type="button"
+          >
+            <CurrentLocationIcon />
+          </button>
+        </div>
+      ) : null}
 
       {mapError ? (
         <div
-          className="absolute left-3.5 top-3.5 z-30 max-w-[min(360px,calc(100%-28px))] rounded-2xl border border-[rgba(180,35,24,0.18)] bg-[rgba(255,246,243,0.94)] px-3.5 py-3 text-danger shadow-[0_12px_30px_rgba(31,26,20,0.12)] max-[720px]:left-2.5 max-[720px]:top-2.5 max-[720px]:max-w-[calc(100%-20px)]"
+          className="absolute left-3.5 top-3.5 z-30 max-w-[min(360px,calc(100%-28px))] rounded-2xl border border-danger/20 bg-danger-bg/94 px-3.5 py-3 text-danger shadow-[var(--shadow-button)] max-[720px]:left-2.5 max-[720px]:top-2.5 max-[720px]:max-w-[calc(100%-20px)]"
           role="alert"
         >
           {mapError}
@@ -571,7 +573,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
 
       {wallFetchError ? (
         <div
-          className="absolute left-3.5 top-[66px] z-30 max-w-[min(360px,calc(100%-28px))] rounded-2xl border border-[rgba(180,35,24,0.18)] bg-[rgba(255,246,243,0.94)] px-3.5 py-3 text-danger shadow-[0_12px_30px_rgba(31,26,20,0.12)] max-[720px]:left-2.5 max-[720px]:top-[60px] max-[720px]:max-w-[calc(100%-20px)]"
+          className="absolute left-3.5 top-[66px] z-30 max-w-[min(360px,calc(100%-28px))] rounded-2xl border border-danger/20 bg-danger-bg/94 px-3.5 py-3 text-danger shadow-[var(--shadow-button)] max-[720px]:left-2.5 max-[720px]:top-[60px] max-[720px]:max-w-[calc(100%-20px)]"
           role="alert"
         >
           {wallFetchError}
@@ -583,7 +585,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
         className={`absolute inset-x-0 bottom-0 z-40 transition-transform duration-200 ${selectedSummary ? "pointer-events-auto translate-y-0" : "pointer-events-none translate-y-[calc(100%+32px)]"}`}
       >
         {selectedSummary ? (
-          <div className="relative rounded-t-[22px] border border-border bg-bg-elevated p-4 shadow-[0_18px_48px_rgba(31,26,20,0.2)] backdrop-blur-[14px]">
+          <div className="relative rounded-t-[22px] border border-border bg-bg-elevated p-4 shadow-[var(--shadow-panel)] backdrop-blur-[14px]">
             <div className="mb-3 flex justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-2xl font-bold">
@@ -595,7 +597,7 @@ export function WallMap({ mapTilerKey }: WallMapProps) {
               </div>
               <button
                 aria-label="詳細を閉じる"
-                className="grid h-[34px] w-[34px] place-items-center rounded-full border border-border bg-bg-elevated transition hover:-translate-y-px hover:border-border-strong hover:bg-white focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-white"
+                className="grid h-[34px] w-[34px] place-items-center rounded-full border border-border bg-bg-elevated transition hover:-translate-y-px hover:border-border-strong hover:bg-bg focus-visible:-translate-y-px focus-visible:border-border-strong focus-visible:bg-bg"
                 onClick={() => {
                   setSelectedSummary(null);
                   setSelectedDetail(null);

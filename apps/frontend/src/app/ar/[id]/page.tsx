@@ -147,7 +147,7 @@ export default function WallARPage() {
           onClick={() => {
             window.location.href = buildFocusedWallMapHref(wallId);
           }}
-          className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/20 bg-[rgba(20,17,14,0.62)] px-4 text-sm text-fg-inverse backdrop-blur-sm"
+          className="inline-flex min-h-10 items-center justify-center rounded-full border border-fg-inverse/20 bg-bg-inverse/62 px-4 text-sm text-fg-inverse backdrop-blur-sm"
         >
           ← 戻る
         </button>

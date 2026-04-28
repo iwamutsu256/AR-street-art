@@ -21,7 +21,7 @@ const items: BottomNavigationItem[] = [
   },
   {
     href: "/walls/new",
-    label: "カベを追加",
+    label: "壁を追加",
     Icon: PlusCircle,
     isActive: (pathname) =>
       pathname === "/walls/new" || pathname.startsWith("/walls/new/"),
@@ -46,7 +46,7 @@ export default function BottomNavigation() {
   return (
     <nav
       aria-label="Mobile"
-      className="fixed inset-x-0 bottom-0 z-80 hidden border-t border-[rgba(31,26,20,0.14)] bg-[rgba(255,253,248,0.92)] shadow-[0_-12px_32px_rgba(31,26,20,0.12)] backdrop-blur-[14px] max-[720px]:block"
+      className="fixed inset-x-0 bottom-0 z-80 hidden border-t border-border bg-bg/92 shadow-[var(--shadow-nav)] backdrop-blur-[14px] max-[720px]:block"
       style={{
         minHeight: "var(--mobile-bottom-nav-height)",
         padding:

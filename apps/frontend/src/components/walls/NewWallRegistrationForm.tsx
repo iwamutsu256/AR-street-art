@@ -329,7 +329,7 @@ function CanvasSizePreview({
         style={{
           aspectRatio: "var(--wall-canvas-preview-aspect-ratio, 1 / 1)",
           background:
-            "radial-gradient(circle at top, rgba(255, 255, 255, 0.14), transparent 44%), #171310",
+            "radial-gradient(circle at top, color-mix(in srgb, var(--color-bg-elevated) 14%, transparent), transparent 44%), var(--color-bg-inverse)",
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -340,7 +340,7 @@ function CanvasSizePreview({
         />
         <svg
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 h-full w-full drop-shadow-[0_2px_6px_rgba(20,17,14,0.42)]"
+          className="pointer-events-none absolute inset-0 h-full w-full drop-shadow-[var(--drop-shadow-measure)]"
           viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
         >
           <line
@@ -378,7 +378,7 @@ function CanvasSizePreview({
         </svg>
         <div className="pointer-events-none absolute left-1/2 top-[var(--wall-canvas-preview-width-label-top,9%)] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
           <span
-            className="inline-flex min-h-10 items-center justify-center rounded-full px-[18px] text-[clamp(0.84rem,2vw,1rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[0_14px_32px_rgba(20,17,14,0.22)] backdrop-blur-[10px]"
+            className="inline-flex min-h-10 items-center justify-center rounded-full px-[18px] text-[clamp(0.84rem,2vw,1rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[var(--shadow-badge)] backdrop-blur-[10px]"
             style={measureBadgeStyle}
           >
             {formatPixelMeasure(safeWidth)}
@@ -386,7 +386,7 @@ function CanvasSizePreview({
         </div>
         <div className="pointer-events-none absolute left-[var(--wall-canvas-preview-height-label-left,91%)] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
           <span
-            className="-rotate-90 inline-flex min-h-10 items-center justify-center rounded-full px-[18px] text-[clamp(0.84rem,2vw,1rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[0_14px_32px_rgba(20,17,14,0.22)] backdrop-blur-[10px]"
+            className="-rotate-90 inline-flex min-h-10 items-center justify-center rounded-full px-[18px] text-[clamp(0.84rem,2vw,1rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[var(--shadow-badge)] backdrop-blur-[10px]"
             style={measureBadgeStyle}
           >
             {formatPixelMeasure(safeHeight)}
@@ -394,7 +394,7 @@ function CanvasSizePreview({
         </div>
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
           <span
-            className="inline-flex min-h-12 items-center justify-center rounded-full px-5 text-[clamp(0.96rem,2.4vw,1.28rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[0_14px_32px_rgba(20,17,14,0.22)] backdrop-blur-[10px]"
+            className="inline-flex min-h-12 items-center justify-center rounded-full px-5 text-[clamp(0.96rem,2.4vw,1.28rem)] font-extrabold tracking-[0.04em] whitespace-nowrap shadow-[var(--shadow-badge)] backdrop-blur-[10px]"
             style={measureBadgeStyle}
           >
             {safeWidth} x {safeHeight}
@@ -1158,7 +1158,7 @@ export function NewWallRegistrationForm({
       </div>
       <div className="flex items-center justify-center w-full relative">
         {isUploadProcessing ? (
-          <div className="absolute inset-0 z-60 grid place-items-center rounded-lg bg-[rgba(255,250,241,0.94)] p-6 backdrop-blur-[6px]">
+          <div className="absolute inset-0 z-60 grid place-items-center rounded-lg bg-bg/94 p-6 backdrop-blur-[6px]">
             <div className="text-center">
               <Spinner label={uploadPhase ?? undefined} size="lg" />
             </div>
@@ -1285,7 +1285,7 @@ export function NewWallRegistrationForm({
           <div className="grid min-h-80 place-items-center">
             <div className="grid aspect-square w-full max-w-[440px] place-items-center">
               <div
-                className="max-h-full max-w-full justify-self-center overflow-hidden border border-border-strong bg-bg shadow-[0_18px_42px_rgba(31,26,20,0.16)] transition-[width,height] duration-150"
+                className="max-h-full max-w-full justify-self-center overflow-hidden border border-border-strong bg-bg shadow-[var(--shadow-panel)] transition-[width,height] duration-150"
                 style={{
                   width: `${aspectPreviewFrame.widthPercent}%`,
                   height: `${aspectPreviewFrame.heightPercent}%`,
@@ -1428,7 +1428,7 @@ export function NewWallRegistrationForm({
         <label className="field-label">
           壁の名称
           <input
-            className="rounded-lg"
+            className="text-input rounded-lg"
             onChange={(event) =>
               setValues((current) => ({ ...current, name: event.target.value }))
             }
@@ -1501,7 +1501,7 @@ export function NewWallRegistrationForm({
         ) : null}
         <input
           id="display_address"
-          className="rounded-lg"
+          className="text-input rounded-lg"
           onChange={(event) =>
             setValues((current) => ({
               ...current,

@@ -22,7 +22,7 @@ export default function ScanGuide() {
         <div className="absolute inset-x-0 -bottom-10 text-center">
           <span
             className="text-sm font-medium tracking-[0.05em] text-fg-inverse"
-            style={{ textShadow: "0 1px 4px rgba(20, 17, 14, 0.8)" }}
+            style={{ textShadow: "var(--text-shadow-inverse)" }}
           >
             壁をスキャン中...
           </span>

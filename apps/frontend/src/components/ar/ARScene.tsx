@@ -448,7 +448,7 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
             <div className="grid gap-3 text-center text-fg-inverse">
               <Spinner tone="success" />
               <p className="m-0 text-sm">壁のマーカーを生成中...</p>
-              <p className="m-0 text-xs text-white/60">初回は 10〜20 秒かかります</p>
+              <p className="m-0 text-xs text-fg-inverse/60">初回は 10〜20 秒かかります</p>
             </div>
           </div>
         )}
@@ -457,9 +457,9 @@ export default function ARScene({ rectifiedUrl, artworkUrl, aspectRatio }: Props
 
         {phase === 'error' && (
           <div className="pointer-events-auto flex h-full items-center justify-center">
-            <div className="grid max-w-[300px] gap-2.5 rounded-[18px] bg-[rgba(20,17,14,0.82)] p-6 text-center text-fg-inverse">
+            <div className="grid max-w-[300px] gap-2.5 rounded-[18px] bg-bg-inverse/82 p-6 text-center text-fg-inverse">
               <p className="m-0 font-semibold text-danger">エラーが発生しました</p>
-              <p className="m-0 text-[13px] text-white/80">{errorMsg}</p>
+              <p className="m-0 text-[13px] text-fg-inverse/80">{errorMsg}</p>
               <button
                 onClick={() => { startedRef.current = false; startAR(); }}
                 className="mt-2 inline-flex min-h-11 items-center justify-center rounded-[10px] bg-success px-5 text-sm text-fg-inverse"
